@@ -108,6 +108,7 @@ function update_values(handle, entry, time_seconds, viewport) {
   handle.base_values[1] = base_color[1];
   handle.base_values[2] = base_color[2];
   handle.base_values[3] = 1;
+  handle.transition_values.set(entry.transition ?? [0, 0, 0, 0]);
   drawable.set({
     frame: handle.frame_values,
     rect: handle.rect_values,
@@ -118,6 +119,7 @@ function update_values(handle, entry, time_seconds, viewport) {
     colors,
     order,
     order_count,
+    transition: handle.transition_values,
   });
 }
 
@@ -255,7 +257,10 @@ export async function create_vgpu_backend(
         (values) => values?.base_color,
       )?.base_color;
       if (resolved_base) capture.base_color = resolved_base;
-      packed = pack_effects(effect_names, parameter_sets);
+      packed = pack_effects(
+        kind === "transition" ? [] : effect_names,
+        parameter_sets,
+      );
       drawable = draw(gpu, {
         label: `folly-vgpu.${kind}`,
         shader: WGSL_SOURCE,
@@ -304,12 +309,14 @@ export async function create_vgpu_backend(
         ...color(capture.base_color, [1, 1, 1]),
         1,
       ]),
+      transition_values: new Float32Array(4),
       disposed: false,
       dispose() {
         if (this.disposed) return;
         this.disposed = true;
         handles.delete(this);
         this.texture.dispose();
+        this.drawable.dispose?.();
       },
     };
     handles.add(handle);

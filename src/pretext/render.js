@@ -5,14 +5,17 @@ export const compute_justified_gap_extra = ({
   isLastLine,
 }) => {
   if (isLastLine || gapCount <= 0 || targetWidth <= lineWidth) return 0;
+
   return (targetWidth - lineWidth) / gapCount;
 };
 
 const count_justifiable_gaps = (line) => {
   let count = 0;
+
   for (let index = 1; index < line.fragments.length; index += 1) {
     if (line.fragments[index].gapBefore > 0) count += 1;
   }
+
   return count;
 };
 
@@ -21,6 +24,7 @@ const apply_attributes = (element, attributes = {}, styles = {}) => {
     if (name === "class") element.className = value;
     else element.setAttribute(name, value);
   }
+
   for (const [name, value] of Object.entries(styles)) {
     const css_name =
       name === "textFillColor"
@@ -40,6 +44,7 @@ const build_fragment = (doc, text, meta) => {
 
   let node = fragment;
   const wrappers = meta?.wrappers ?? [];
+
   for (let index = wrappers.length - 1; index >= 0; index -= 1) {
     const descriptor = wrappers[index];
     const wrapper = doc.createElement(descriptor.tag || "span");
@@ -47,12 +52,14 @@ const build_fragment = (doc, text, meta) => {
     wrapper.append(node);
     node = wrapper;
   }
+
   return { node, fragment };
 };
 
 const emit_layout_event = (root, name) => {
   const view = root.ownerDocument.defaultView;
   if (typeof view?.CustomEvent !== "function") return;
+
   root.dispatchEvent(
     new view.CustomEvent(name, { bubbles: true, detail: { root } }),
   );
@@ -78,6 +85,7 @@ export const render_pretext_lines = ({
       gapCount: count_justifiable_gaps(line),
       isLastLine: is_last_line,
     });
+
     const line_element = doc.createElement("span");
     line_element.className = "sol__pretext_line";
     line_element.dataset.solPretextLine = String(line_index + 1);
@@ -101,6 +109,7 @@ export const render_pretext_lines = ({
           itemIndex: fragment.itemIndex,
         },
       );
+
       if (should_add_gap && gap_extra > 0)
         built.fragment.style.marginInlineStart = `${gap_extra}px`;
       line_element.append(built.node);

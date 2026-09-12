@@ -1,5 +1,6 @@
 import * as THREE from "three/webgpu";
 import { create_effect_material } from "./material.js";
+import { create_transition_material } from "./transition_material.js";
 
 function dispose_renderer(renderer) {
   try {
@@ -11,8 +12,18 @@ function dispose_renderer(renderer) {
 
 export async function create_webgl_backend(canvas, options = {}) {
   const { is_alive = () => true, on_lost = () => {} } = options;
+  const context = canvas.getContext("webgl2", {
+    alpha: true,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    premultipliedAlpha: false,
+  });
+  if (!context) throw new Error("WebGL2 is unavailable");
+
   const renderer = new THREE.WebGPURenderer({
     canvas,
+    context,
     alpha: true,
     antialias: false,
     depth: false,
@@ -85,10 +96,16 @@ export async function create_webgl_backend(canvas, options = {}) {
         });
       texture = new THREE.CanvasTexture(source);
       texture.colorSpace = THREE.NoColorSpace;
-      built = create_effect_material(texture, effect_names, parameter_sets);
+      built =
+        kind === "transition"
+          ? create_transition_material(texture, captured)
+          : create_effect_material(texture, effect_names, parameter_sets);
       geometry = new THREE.PlaneGeometry(1, 1);
       const mesh = new THREE.Mesh(geometry, built.material);
       mesh.frustumCulled = false;
+      await renderer.compileAsync(mesh, camera, scene);
+      if (disposed || !is_alive())
+        throw new Error("WebGL capture became stale");
       mesh.visible = false;
       scene.add(mesh);
       const handle = {
@@ -98,6 +115,7 @@ export async function create_webgl_backend(canvas, options = {}) {
         texture,
         geometry,
         time: built.time,
+        transition: built.transition,
         width: captured?.width ?? 1,
         height: captured?.height ?? 1,
         disposed: false,
@@ -154,6 +172,7 @@ export async function create_webgl_backend(canvas, options = {}) {
         1,
       );
       handle.time.value = Number(time_seconds) || 0;
+      handle.transition?.value.fromArray(entry.transition ?? [0, 0, 0, 0]);
       mesh.visible = true;
       renderer.setScissor(
         left,

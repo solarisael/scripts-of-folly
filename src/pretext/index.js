@@ -11,26 +11,33 @@ const PRETEXT_SELECTOR = '[data-sol-pretext="justify"]';
 const HYDRATED_ATTRIBUTE = "data-sol-pretext-hydrated";
 const SHAPE_ATTRIBUTE = "data-sol-pretext-shape";
 const SHAPE_HYDRATED_ATTRIBUTE = "data-sol-pretext-shape-hydrated";
+
 const generated_attribute = (name) =>
   Boolean(name) &&
   (name.startsWith("data-folly-") || name.startsWith("data-sol-pretext-"));
+
 const GENERATED_LAYOUT_CLASSES = new Set([
   "sol__pretext_justified",
   "sol__pretext_shaped",
   "sol__pretext_transitioning",
 ]);
+
 const strip_generated_classes = (value) =>
   String(value || "")
     .split(/\s+/u)
     .filter((name) => name && !GENERATED_LAYOUT_CLASSES.has(name))
     .join(" ");
+
 const is_element = (value) => value?.nodeType === 1;
 const is_root = (value) => is_element(value) && value.matches(PRETEXT_SELECTOR);
+
 const owner_document = (value) =>
   value?.nodeType === 9 ? value : value?.ownerDocument;
+
 const emit = (root, name) => {
   const view = root.ownerDocument.defaultView;
   if (typeof view?.CustomEvent !== "function") return;
+
   root.dispatchEvent(
     new view.CustomEvent(name, { bubbles: true, detail: { root } }),
   );
@@ -38,6 +45,7 @@ const emit = (root, name) => {
 
 const source_cache = new WeakMap();
 const last_width = new WeakMap();
+
 const rendered_surface = (root) =>
   root.hasAttribute(HYDRATED_ATTRIBUTE) &&
   root.querySelector(".sol__pretext_line") !== null;
@@ -45,6 +53,7 @@ const rendered_surface = (root) =>
 export const reset_pretext_source = (root, options = {}) => {
   const source = source_cache.get(root);
   if (!source) return;
+
   const restore = options.restore !== false;
   if (
     restore &&
@@ -56,17 +65,21 @@ export const reset_pretext_source = (root, options = {}) => {
     root.removeAttribute(HYDRATED_ATTRIBUTE);
     root.removeAttribute(SHAPE_HYDRATED_ATTRIBUTE);
   }
+
   source_cache.delete(root);
   last_width.delete(root);
 };
 
 const read_source = (root) => {
   let source = source_cache.get(root);
+
   if (!source) {
     if (rendered_surface(root)) return null;
+
     source = extract_pretext_source(root);
     source_cache.set(root, source);
   }
+
   return source;
 };
 
@@ -74,10 +87,12 @@ const prepared_for = (source) => {
   const signature = source.items
     .map((item) => `${item.text}\u0000${item.font}\u0000${item.letterSpacing}`)
     .join("\u0001");
+
   if (!source.prepared || source.signature !== signature) {
     source.prepared = prepareRichInline(source.items);
     source.signature = signature;
   }
+
   return source.prepared;
 };
 
@@ -92,19 +107,24 @@ const cursor_is_forward = (before, after) =>
 const layout_plain_lines = (prepared, width) => {
   const lines = [];
   let cursor;
+
   while (true) {
     const range = layoutNextRichInlineLineRange(prepared, width, cursor);
     if (!range || !cursor_is_forward(cursor, range.end)) break;
+
     lines.push(materializeRichInlineLineRange(prepared, range));
     cursor = range.end;
   }
+
   return lines;
 };
 
 export const layout_pretext_root = (root) => {
   if (!is_root(root)) return false;
+
   const width = root.clientWidth;
   if (!Number.isFinite(width) || width <= 0) return false;
+
   emit(root, "folly:pretext-before-layout");
   const source = read_source(root);
   if (!source || !source.items.length) return false;
@@ -123,24 +143,30 @@ export const layout_pretext_root = (root) => {
     shape,
   });
   last_width.set(root, width);
+
   return lines.length > 0;
 };
 
 const roots_in = (scope) => {
   if (!scope || typeof scope.querySelectorAll !== "function") return [];
+
   const roots = [];
   if (is_root(scope)) roots.push(scope);
+
   for (const root of scope.querySelectorAll(PRETEXT_SELECTOR)) {
     if (!roots.includes(root)) roots.push(root);
   }
+
   return roots;
 };
 
 export const hydrate_pretext_justification = (root = document) => {
   const roots = roots_in(root);
   let hydrated = false;
+
   for (const pretext_root of roots)
     hydrated = layout_pretext_root(pretext_root) || hydrated;
+
   return hydrated;
 };
 
@@ -149,17 +175,21 @@ export const install_pretext = ({ root = document } = {}) => {
   if (!doc || typeof doc.querySelectorAll !== "function") {
     return { refresh() {}, dispose() {} };
   }
+
   let disposed = false;
   let refresh_pending = false;
   const observed = new Set();
   const pending = new Set();
+
   const resize_observer =
     typeof ResizeObserver === "function"
       ? new ResizeObserver((entries) => {
           if (disposed) return;
+
           for (const entry of entries) {
             const target = entry.target;
             if (!is_root(target)) continue;
+
             const width = target.clientWidth;
             if (width > 0 && width !== last_width.get(target))
               layout_pretext_root(target);
@@ -169,18 +199,22 @@ export const install_pretext = ({ root = document } = {}) => {
 
   const observe_root = (pretext_root) => {
     if (observed.has(pretext_root)) return;
+
     observed.add(pretext_root);
     resize_observer?.observe(pretext_root);
   };
 
   const schedule = (pretext_root) => {
     if (disposed || !is_root(pretext_root)) return;
+
     pending.add(pretext_root);
     if (refresh_pending) return;
+
     refresh_pending = true;
     queueMicrotask(() => {
       refresh_pending = false;
       if (disposed) return;
+
       for (const target of pending) {
         pending.delete(target);
         if (target.isConnected !== false) layout_pretext_root(target);
@@ -190,10 +224,12 @@ export const install_pretext = ({ root = document } = {}) => {
 
   const refresh = (scope = root) => {
     if (disposed) return;
+
     for (const pretext_root of roots_in(scope)) {
       observe_root(pretext_root);
       schedule(pretext_root);
     }
+
     for (const pretext_root of observed) {
       if (!pretext_root.isConnected) {
         resize_observer?.unobserve(pretext_root);
@@ -207,7 +243,22 @@ export const install_pretext = ({ root = document } = {}) => {
     typeof MutationObserver === "function"
       ? new MutationObserver((records) => {
           if (disposed) return;
+
           for (const record of records) {
+            if (record.type === "childList") {
+              const changed_nodes = [
+                ...record.addedNodes,
+                ...record.removedNodes,
+              ];
+              if (
+                changed_nodes.length &&
+                changed_nodes.every((node) =>
+                  node.matches?.(".folly-gpu-canvas"),
+                )
+              )
+                continue;
+            }
+
             const target = is_element(record.target)
               ? record.target
               : record.target.parentElement || record.target.documentElement;
@@ -222,6 +273,7 @@ export const install_pretext = ({ root = document } = {}) => {
                 }
               }
             }
+
             if (pretext_root && rendered_surface(pretext_root)) {
               const own_children =
                 record.type === "childList" &&
@@ -248,14 +300,17 @@ export const install_pretext = ({ root = document } = {}) => {
               generated_attribute(record.attributeName)
             )
               continue;
+
             if (pretext_root) {
               reset_pretext_source(pretext_root);
               observe_root(pretext_root);
               schedule(pretext_root);
             }
+
             if (record.type === "childList") {
               for (const node of record.addedNodes) {
                 if (!is_element(node)) continue;
+
                 for (const added_root of roots_in(node)) {
                   observe_root(added_root);
                   schedule(added_root);
@@ -278,6 +333,7 @@ export const install_pretext = ({ root = document } = {}) => {
   };
   doc.addEventListener("htmx:afterSwap", on_swap);
   doc.addEventListener("htmx:historyRestore", on_swap);
+
   const fonts = doc.fonts;
   const on_fonts = () => {
     for (const pretext_root of observed) {
@@ -292,19 +348,24 @@ export const install_pretext = ({ root = document } = {}) => {
   });
 
   refresh(root);
+
   return {
     refresh(scope = root) {
       refresh(scope);
     },
+
     dispose() {
       if (disposed) return;
+
       disposed = true;
       mutation_observer?.disconnect();
       resize_observer?.disconnect();
+
       doc.removeEventListener("htmx:afterSwap", on_swap);
       doc.removeEventListener("htmx:historyRestore", on_swap);
       fonts?.removeEventListener?.("loadingdone", on_fonts);
       fonts?.removeEventListener?.("loadingerror", on_fonts);
+
       pending.clear();
       observed.clear();
     },

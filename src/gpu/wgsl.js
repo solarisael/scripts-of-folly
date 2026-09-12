@@ -1,3 +1,5 @@
+import { TRANSITION_WGSL } from "./transition_wgsl.js";
+
 export const EFFECT_SLOTS = Object.freeze({
   glow: 0,
   neon: 1,
@@ -39,6 +41,8 @@ struct VertexOut {
 @group(0) @binding(8) var<uniform> order_count: vec4f;
 @group(0) @binding(9) var glyph: texture_2d<f32>;
 @group(0) @binding(10) var glyph_sampler: sampler;
+@group(0) @binding(11) var<uniform> transition: vec4f;
+
 fn ordered_slot(slot: u32) -> bool {
   let count = u32(order_count.x);
   for (var index: u32 = 0u; index < 20u; index = index + 1u) {
@@ -188,6 +192,8 @@ fn glitch_motion(phase: f32) -> vec2f {
   return vec2f(0.06, 0.04);
 }
 
+${TRANSITION_WGSL}
+
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
   var points = array<vec2f, 6>(
@@ -250,6 +256,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   if (input.css.x < clip.x || input.css.y < clip.y
       || input.css.x > clip.z || input.css.y > clip.w) {
     return vec4f(0.0);
+  }
+
+  if (transition.x > 0.5) {
+    return transition_ink(uv);
   }
 
   let base_mask = sample_mask(uv);
