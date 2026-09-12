@@ -1,0 +1,51 @@
+{
+  "lockfileVersion": 2,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "scripts-of-folly",
+      "dependencies": {
+        "@chenglou/pretext": "0.0.8",
+        "three": "^0.185.1",
+        "vgpu": "0.4.0",
+      },
+    },
+  },
+  "packages": {
+    "@chenglou/pretext": ["@chenglou/pretext@0.0.8", "", {}, "sha512-yqm2GMxnPI7VHcHwe84P8ZF0JK/2d2DMKPqMN+s95jQhwDMYYXKVFVJUMEaVWckQStdsjdLav/0Vu+d9YbtGxA=="],
+
+    "@modelcontextprotocol/core": ["@modelcontextprotocol/core@2.0.0", "", { "dependencies": { "zod": "^4.2.0" } }, "sha512-pJCEwGG7Lfr/+PQp9ZTwKXNeO5wzbfKL7H3MYpCorM4oFBoQrdjnBgEoqG+RjhsvS1FKrDbKux+M1HhlnGWqcA=="],
+
+    "@modelcontextprotocol/server": ["@modelcontextprotocol/server@2.0.0", "", { "dependencies": { "@modelcontextprotocol/core": "2.0.0", "zod": "^4.2.0" } }, "sha512-YhHWdHfpFMQfd0prsEnxKeS3Qz3ytIGmsS0sth4KDjnacIT7hxk6hXHkJ9KysxlkvTM+WZAtQbbcUhdoP4Hvtw=="],
+
+    "@vgpu/adapter-mock": ["@vgpu/adapter-mock@0.4.0", "", { "dependencies": { "@vgpu/core": "0.4.0" } }, "sha512-fqOEHCZAt+mMyOpgAA5inFWSoB9siO1LQIq9t+i6iemLbp2VBEEWlhZXCh3Hf+UDqbkut8kQaDrMPLt2J9LpvA=="],
+
+    "@vgpu/adapter-node": ["@vgpu/adapter-node@0.4.0", "", { "dependencies": { "@vgpu/core": "0.4.0", "webgpu": "0.4.0" } }, "sha512-A6Rj5Ge8Uw6BFrRBiJa8iRTI4fSxkz2JyR1rAhTl+kUNMeyAxrMlItqsUdVcaLe3fJPUh0sU6cr9zzHjHvuVUA=="],
+
+    "@vgpu/core": ["@vgpu/core@0.4.0", "", { "dependencies": { "@vgpu/wgsl": "0.4.0" } }, "sha512-yBkqlNzTRYaRRzOAsootOmppzsDZytL5Xe09rZfV60zJc4FTr5jWZmGCrm/zlWM/1wEKocDtKloVKfKD+2TNPw=="],
+
+    "@vgpu/wgsl": ["@vgpu/wgsl@0.4.0", "", { "dependencies": { "@vgpu/wgsl-std": "0.4.0" }, "peerDependencies": { "@vgpu/adapter-node": ">=0.1.6 <1.0.0" }, "optionalPeers": ["@vgpu/adapter-node"] }, "sha512-19aESov4jNukukAlbE9VH34T/2VcIzmQPZ45WyphtrUMevFacAqTVU6qJVAP/YGX3rjQaL7Eq4jdvEhtOxNEPg=="],
+
+    "@vgpu/wgsl-std": ["@vgpu/wgsl-std@0.4.0", "", {}, "sha512-a0EkK1y5VeA1jCEjPxe7BW7zTebL1UKLIQlEdxqrb8T1Zr+xO7VBe5mTNsuJtKWxgF+lANUqLwScyN+Fs4ooFw=="],
+
+    "@webgpu/types": ["@webgpu/types@0.1.72", "", {}, "sha512-0cF7RFM2edNoiIS1ODJp0/Gzv4/xSXhwoR0YCza+OWpJWtn4wmo9DvK91aLlH9+uUnwIriP7ZiC3WitmyhuzBw=="],
+
+    "debug": ["debug@4.4.3", "", { "dependencies": { "ms": "^2.1.3" }, "peerDependencies": { "supports-color": "*" }, "optionalPeers": ["supports-color"] }, "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA=="],
+
+    "ms": ["ms@2.1.3", "", {}, "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA=="],
+
+    "pixelmatch": ["pixelmatch@7.2.0", "", { "dependencies": { "pngjs": "^7.0.0" }, "bin": { "pixelmatch": "bin/pixelmatch" } }, "sha512-xhcb4yHu9sM/G7foGzoLtXYcC0zHEaOXXjRKhGup0fw78Nf2Tkiapv4EQyMzrbcmQPsllAI7DbFY2UT7PlI9Pg=="],
+
+    "pngjs": ["pngjs@7.0.0", "", {}, "sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow=="],
+
+    "three": ["three@0.185.1", "", {}, "sha512-5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg=="],
+
+    "vgpu": ["vgpu@0.4.0", "", { "dependencies": { "@modelcontextprotocol/server": "2.0.0", "@vgpu/adapter-mock": "0.4.0", "@vgpu/adapter-node": "0.4.0", "@vgpu/core": "0.4.0", "@vgpu/wgsl": "0.4.0", "@vgpu/wgsl-std": "0.4.0", "@webgpu/types": "^0.1.69", "pixelmatch": "^7.2.0", "pngjs": "^7.0.0", "wgpu-matrix": "^3.4.2", "zod": "^4.4.3" }, "peerDependencies": { "three": ">=0.180.0 <0.200.0" }, "optionalPeers": ["three"], "bin": { "vgpu": "bin/vgpu.js" } }, "sha512-U8ofyb2FdiLpbkMJrGSu2PWu/fmiKsXYYpp3agFE3TjM5+6o7aZFD1PBl8XxxnSeN7br/Izmow7fcEmYJTpxSw=="],
+
+    "webgpu": ["webgpu@0.4.0", "", { "dependencies": { "@webgpu/types": "^0.1.69", "debug": "^4.4.0" } }, "sha512-F5pimn3Aoi0zWjuRdiVs5TnrUwSzD2lESBohsIUsqyitWkGRQlXU2fhV6ycXlQTa1bvAf3sjqiUpBEpmSQ5ptA=="],
+
+    "wgpu-matrix": ["wgpu-matrix@3.4.2", "", {}, "sha512-IfZFbG7olEYBD76VCZy2TzqM57GKy3LT++AZh37tMHPPByO6R2h61zXGBZFNPi2IzxNivNi8y5dvze5PjaczjA=="],
+
+    "zod": ["zod@4.6.2", "", {}, "sha512-lh5RCAGFa1Cm2hjtNwLQhSs/AsqdWnTQaBER9fEwN/88pSh7KOtJavtBx/0VlkN/uFd61SwYmljLMDAsHlvzBQ=="],
+  }
+}

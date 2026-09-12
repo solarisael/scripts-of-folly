@@ -1,0 +1,497 @@
+/* fx library — overlay/block effects (sol__block_fx_*): base + panels + keyframes
+   Split from components/text_effects.css 2026-07-02; bytes verbatim.
+   Loaded via css/index.css. Runtime counterpart: public/vendor/fx/js/. */
+
+.sol__block_fx {
+  --block_fx_stack_intensity: var(--block_fx_marker_intensity, 1);
+  --block_fx_stack_motion: var(--block_fx_marker_motion, 1);
+  --block_fx_stack_speed: var(--block_fx_marker_speed, 1);
+  --block_fx_speed_strength: calc(
+    var(--site_fx_motion_mult, 1) * var(--block_fx_marker_speed, 1)
+  );
+  --block_fx_glow_strength: calc(
+    var(--site_fx_glow_mult, 1) * var(--block_fx_stack_intensity)
+  );
+  --block_fx_motion_strength: calc(
+    var(--site_fx_motion_mult, 1) * var(--block_fx_stack_motion)
+  );
+  position: relative;
+  display: block;
+  margin-top: 1.2em;
+  margin-bottom: 1.2em;
+  padding: 1rem 1.05rem;
+  border: var(--site_border_width_hairline, 1px) solid
+    color-mix(
+      in oklch,
+      var(--site_style_accent, currentColor)
+        calc(28% + (16% * var(--block_fx_glow_strength))),
+      transparent
+    );
+  border-radius: 0.72rem;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, currentColor 8%, transparent),
+      color-mix(in oklch, currentColor 2%, transparent)
+    ),
+    color-mix(in oklch, black 66%, transparent);
+  box-shadow:
+    0 0 calc(0.9rem * var(--block_fx_glow_strength))
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor)
+          calc(22% + (20% * var(--block_fx_glow_strength))),
+        transparent
+      ),
+    inset 0 0 calc(0.5rem * var(--block_fx_glow_strength))
+      color-mix(in oklch, white 5%, transparent);
+}
+
+.sol__block_fx_terminal {
+  font-family: var(--default-mono-font-family, ui-monospace, monospace);
+  color: color-mix(
+    in oklch,
+    currentColor calc(82% + (12% * var(--block_fx_glow_strength))),
+    var(--site_style_accent, currentColor)
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, black 72%, transparent),
+      color-mix(in oklch, black 58%, transparent)
+    ),
+    color-mix(in oklch, black 72%, transparent);
+  overflow: hidden;
+}
+
+.sol__block_fx_terminal::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: calc(0.14 * var(--block_fx_glow_strength));
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0,
+    transparent 0.18rem,
+    color-mix(in oklch, white 28%, transparent) 0.19rem,
+    transparent 0.22rem
+  );
+  animation: block_fx_terminal_scan calc(5s / var(--block_fx_speed_strength, 1))
+    linear infinite;
+}
+
+.sol__block_fx_terminal p,
+.sol__block_fx_terminal li {
+  line-height: 1.56;
+}
+
+.sol__block_fx_stat_screen {
+  border-color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor)
+      calc(38% + (18% * var(--block_fx_glow_strength))),
+    transparent
+  );
+  background:
+    linear-gradient(
+      140deg,
+      color-mix(in oklch, currentColor 8%, transparent),
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor) 10%,
+        transparent
+      )
+    ),
+    color-mix(in oklch, black 62%, transparent);
+}
+
+.sol__block_fx_stat_screen ul,
+.sol__block_fx_stat_screen ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+.sol__block_fx_stat_screen li {
+  padding: 0.5em 0.62em;
+  border: var(--site_border_width_hairline) solid
+    color-mix(
+      in oklch,
+      currentColor calc(18% + (12% * var(--block_fx_glow_strength))),
+      transparent
+    );
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, black 44%, transparent);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.sol__block_fx_game_screen {
+  border-color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor)
+      calc(34% + (18% * var(--block_fx_glow_strength))),
+    transparent
+  );
+  background:
+    radial-gradient(
+      140% 100% at 100% 0,
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor)
+          calc(16% + (14% * var(--block_fx_glow_strength))),
+        transparent
+      ),
+      transparent
+    ),
+    color-mix(in oklch, black 62%, transparent);
+}
+
+.sol__block_fx_game_screen > :where(h1, h2, h3, h4, h5, h6, p:first-of-type) {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sol__block_fx_quest_log {
+  border-color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor)
+      calc(42% + (18% * var(--block_fx_glow_strength))),
+    transparent
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor) 10%,
+        transparent
+      ),
+      color-mix(in oklch, black 58%, transparent)
+    ),
+    color-mix(in oklch, black 66%, transparent);
+}
+
+.sol__block_fx_quest_log ul,
+.sol__block_fx_quest_log ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+.sol__block_fx_quest_log li {
+  padding-left: 0.6em;
+  padding-right: 0.6em;
+  border-left: 0.1rem solid
+    color-mix(
+      in oklch,
+      var(--site_style_accent, currentColor)
+        calc(48% + (16% * var(--block_fx_glow_strength))),
+      transparent
+    );
+}
+
+.sol__block_fx_skill_popup {
+  border-color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor)
+      calc(48% + (18% * var(--block_fx_glow_strength))),
+    transparent
+  );
+  background:
+    radial-gradient(
+      140% 100% at 50% 0,
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor)
+          calc(22% + (14% * var(--block_fx_glow_strength))),
+        transparent
+      ),
+      transparent
+    ),
+    color-mix(in oklch, black 62%, transparent);
+}
+
+/* Glow pulse lives on ::before — box-shadow animation never runs on the host, avoids paint thrash */
+.sol__block_fx_skill_popup::before {
+  animation: block_fx_skill_popup_glow
+    calc(2.6s / var(--block_fx_speed_strength, 1)) ease-in-out infinite;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.sol__block_fx_inventory {
+  font-variant-numeric: tabular-nums;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, white 4%, transparent),
+      color-mix(in oklch, black 58%, transparent)
+    ),
+    color-mix(in oklch, black 66%, transparent);
+}
+
+.sol__block_fx_inventory ul,
+.sol__block_fx_inventory ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+.sol__block_fx_inventory li {
+  padding: 0.4em 0.52em;
+  border-radius: 0.4rem;
+  background: color-mix(in oklch, black 42%, transparent);
+}
+
+.sol__block_fx_combat_feed {
+  --combat_feed_bracket_color: currentColor;
+  --combat_token_bracket_opacity: 0.74;
+  --combat_token_bracket_tracking: -0.08em;
+  --combat_token_bracket_weight: 640;
+
+  border-color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor)
+      calc(34% + (18% * var(--block_fx_glow_strength))),
+    transparent
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, currentColor 9%, transparent),
+      color-mix(in oklch, black 62%, transparent)
+    ),
+    color-mix(in oklch, black 68%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.sol__block_fx_combat_feed ul,
+.sol__block_fx_combat_feed ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+.sol__block_fx_combat_feed li {
+  padding: 0.4em 0.54em;
+  border-left: 0.1rem solid
+    color-mix(
+      in oklch,
+      var(--site_style_accent, currentColor)
+        calc(44% + (14% * var(--block_fx_glow_strength))),
+      transparent
+    );
+  background: color-mix(in oklch, black 42%, transparent);
+  border-radius: 0.36rem;
+}
+
+.sol__block_fx_combat_feed :where(strong, b) {
+  color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor)
+      calc(58% + (10% * var(--block_fx_glow_strength))),
+    currentColor
+  );
+}
+
+.sol__block_fx_status_effects {
+  background:
+    linear-gradient(
+      120deg,
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor) 10%,
+        transparent
+      ),
+      color-mix(in oklch, black 64%, transparent)
+    ),
+    color-mix(in oklch, black 66%, transparent);
+}
+
+.sol__block_fx_status_effects ul,
+.sol__block_fx_status_effects ol {
+  list-style: none;
+  padding-left: 0;
+  display: grid;
+  gap: 0.42em;
+}
+
+.sol__block_fx_status_effects li {
+  padding: 0.38em 0.52em;
+  border-radius: 0.45rem;
+  border: var(--site_border_width_hairline) solid
+    color-mix(
+      in oklch,
+      currentColor calc(22% + (10% * var(--block_fx_glow_strength))),
+      transparent
+    );
+}
+
+.sol__block_fx_system_warning {
+  /* Quick Tune Variables (edit here first) */
+  --block_fx_warning_color: oklch(84% 0.14 84); /* amber warning tone */
+
+  border-color: color-mix(
+    in oklch,
+    var(--block_fx_warning_color)
+      calc(52% + (18% * var(--block_fx_glow_strength))),
+    transparent
+  );
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--block_fx_warning_color) 22%, transparent),
+      color-mix(in oklch, black 62%, transparent)
+    ),
+    color-mix(in oklch, black 64%, transparent);
+  box-shadow:
+    0 0 calc(0.88rem * var(--block_fx_glow_strength))
+      color-mix(in oklch, var(--block_fx_warning_color) 36%, transparent),
+    inset 0 0 calc(0.45rem * var(--block_fx_glow_strength))
+      color-mix(in oklch, var(--block_fx_warning_color) 22%, transparent);
+  border-top-width: 0.14rem;
+}
+
+.sol__block_fx_system_warning > :first-child {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 640;
+}
+
+.sol__block_fx_system_warning :where(strong, b) {
+  color: color-mix(in oklch, var(--block_fx_warning_color) 72%, currentColor);
+}
+
+.sol__block_fx_memory_fragment {
+  border-style: dashed;
+  background:
+    linear-gradient(
+      140deg,
+      color-mix(in oklch, currentColor 8%, transparent),
+      color-mix(in oklch, black 68%, transparent)
+    ),
+    color-mix(in oklch, black 70%, transparent);
+  filter: saturate(0.92);
+}
+
+.sol__block_fx_admin_trace {
+  font-family: var(--default-mono-font-family, ui-monospace, monospace);
+  border-color: color-mix(
+    in oklch,
+    currentColor calc(24% + (12% * var(--block_fx_glow_strength))),
+    transparent
+  );
+  color: color-mix(in oklch, currentColor 78%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, black 80%, transparent),
+      color-mix(in oklch, black 72%, transparent)
+    ),
+    color-mix(in oklch, black 78%, transparent);
+}
+
+.sol__block_fx_party_roster {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor) 10%,
+        transparent
+      ),
+      color-mix(in oklch, black 60%, transparent)
+    ),
+    color-mix(in oklch, black 66%, transparent);
+}
+
+.sol__block_fx_party_roster ul,
+.sol__block_fx_party_roster ol {
+  list-style: none;
+  padding-left: 0;
+}
+
+.sol__block_fx_party_roster li {
+  padding: 0.38em 0.52em;
+  border-radius: 0.44rem;
+  border: var(--site_border_width_hairline) solid
+    color-mix(
+      in oklch,
+      currentColor calc(20% + (10% * var(--block_fx_glow_strength))),
+      transparent
+    );
+}
+
+.sol__block_fx_map_ping {
+  border-color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor)
+      calc(36% + (16% * var(--block_fx_glow_strength))),
+    transparent
+  );
+  background:
+    radial-gradient(
+      120% 110% at 50% 100%,
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor)
+          calc(16% + (12% * var(--block_fx_glow_strength))),
+        transparent
+      ),
+      transparent
+    ),
+    color-mix(in oklch, black 66%, transparent);
+}
+
+@keyframes block_fx_terminal_scan {
+  0% {
+    transform: translateY(0);
+  }
+
+  100% {
+    transform: translateY(calc(0.22rem * var(--block_fx_motion_strength, 1)));
+  }
+}
+
+@keyframes block_fx_skill_popup_glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0
+        calc(
+          0.6rem * var(--block_fx_glow_strength) *
+            var(--block_fx_motion_strength, 1)
+        )
+        color-mix(
+          in oklch,
+          var(--site_style_accent, currentColor)
+            calc(18% + (12% * var(--block_fx_glow_strength))),
+          transparent
+        ),
+      inset 0 0
+        calc(
+          0.32rem * var(--block_fx_glow_strength) *
+            var(--block_fx_motion_strength, 1)
+        )
+        color-mix(in oklch, white 6%, transparent);
+  }
+
+  50% {
+    box-shadow:
+      0 0
+        calc(
+          1rem * var(--block_fx_glow_strength) *
+            var(--block_fx_motion_strength, 1)
+        )
+        color-mix(
+          in oklch,
+          var(--site_style_accent, currentColor)
+            calc(26% + (14% * var(--block_fx_glow_strength))),
+          transparent
+        ),
+      inset 0 0
+        calc(
+          0.45rem * var(--block_fx_glow_strength) *
+            var(--block_fx_motion_strength, 1)
+        )
+        color-mix(in oklch, white 10%, transparent);
+  }
+}

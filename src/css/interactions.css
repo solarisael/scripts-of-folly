@@ -1,0 +1,314 @@
+/* fx library — interaction layer (Act 2): one popup engine under everything.
+   Chrome is plain-but-tunable; the reliquary skin arrives once Sol's
+   hand-vectorized assets exist (see fx_library_plan.md). Runtime
+   counterpart: public/vendor/fx/js/interactions.js. */
+
+/* Quick Tune Variables — edit here first */
+:root {
+  --ix_popup_max_width: 22rem;
+  --ix_popup_padding: 0.7rem 1rem;
+  --ix_popup_radius: 0.65rem;
+  --ix_popup_border_opacity: 0.32;
+  --ix_popup_border_opacity_pinned: 0.85;
+  --ix_popup_bg_opacity: 0.92;
+  --ix_popup_blur: 10px;
+  --ix_popup_transition: 120ms ease;
+  --ix_popup_sheet_max_height: 60vh;
+}
+
+.sol__ix {
+  cursor: help;
+  text-decoration: none;
+}
+
+.sol__ix:not(.sol__nav_pill):not(button):not([role="button"]) {
+  position: relative;
+  background-image: linear-gradient(
+    90deg,
+    color-mix(
+      in oklch,
+      var(--site_style_accent, currentColor) 36%,
+      transparent
+    ),
+    color-mix(
+      in oklch,
+      var(--site_style_accent, currentColor) 58%,
+      transparent
+    ),
+    color-mix(in oklch, var(--site_style_accent, currentColor) 36%, transparent)
+  );
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 100% 0.08em;
+  transition:
+    color var(--ix_popup_transition),
+    background-size var(--ix_popup_transition),
+    text-shadow var(--ix_popup_transition);
+}
+
+.sol__ix:not(.sol__nav_pill):not(button):not([role="button"])::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: -0.08em;
+  height: 0.12em;
+  border-radius: 999px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 38%,
+    color-mix(in oklch, white 66%, var(--site_style_accent, currentColor)) 50%,
+    transparent 62%,
+    transparent 100%
+  );
+  background-size: 260% 100%;
+  opacity: 0.42;
+  animation: ix_text_glint_drift 4.8s linear infinite;
+}
+
+.sol__ix:not(.sol__nav_pill):not(button):not([role="button"]):hover,
+.sol__ix:not(.sol__nav_pill):not(button):not([role="button"]):focus-visible {
+  background-size: 100% 0.16em;
+  text-shadow: 0 0 10px
+    color-mix(in oklch, var(--site_style_accent, currentColor) 30%, transparent);
+  outline: none;
+}
+
+.sol__ix:not(.sol__nav_pill):not(button):not([role="button"]):hover::after,
+.sol__ix:not(.sol__nav_pill):not(button):not(
+    [role="button"]
+  ):focus-visible::after {
+  opacity: 0.72;
+}
+
+a.sol__ix[href] {
+  cursor: pointer;
+}
+
+@keyframes ix_text_glint_drift {
+  from {
+    background-position: 140% 0;
+  }
+
+  to {
+    background-position: -140% 0;
+  }
+}
+
+.sol__ix_popup {
+  position: fixed;
+  z-index: 60;
+  max-width: var(--ix_popup_max_width);
+  padding: var(--ix_popup_padding);
+  border-radius: var(--ix_popup_radius);
+  border: 1px solid
+    color-mix(
+      in oklch,
+      var(--site_style_accent, currentColor) var(--ix_popup_border_opacity),
+      transparent
+    );
+  background: color-mix(
+    in oklch,
+    black var(--ix_popup_bg_opacity),
+    transparent
+  );
+  backdrop-filter: blur(var(--ix_popup_blur));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  pointer-events: auto;
+  transition:
+    opacity var(--ix_popup_transition),
+    border-color var(--ix_popup_transition);
+}
+
+/* Fetched/revealed content can carry an image. Let text wrap around the
+   image by default on both desktop hover cards and the mobile sheet, while
+   still capping portrait size so a full-size image never owns the card. */
+.sol__ix_popup_slot img,
+.sol__ix_popup_explanation_body img {
+  display: block;
+  float: inline-start;
+  max-width: min(45%, 10rem);
+  max-height: 12rem;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: calc(var(--ix_popup_radius) * 0.6);
+  margin-inline-end: 0.75rem;
+  margin-block-end: 0.35rem;
+}
+
+.sol__ix_popup_slot::after,
+.sol__ix_popup_explanation_body::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+/* Profile: float remains as an explicit alias for older authored triggers.
+   Image wrapping is now the default for image-bearing popups. */
+.sol__ix_popup_profile_float .sol__ix_popup_slot img,
+.sol__ix_popup_profile_float .sol__ix_popup_explanation_body img {
+  max-width: min(45%, 10rem);
+}
+
+/* Profile: compact — terse hover labels and small UI hints. */
+.sol__ix_popup_profile_compact {
+  --ix_popup_max_width: 16rem;
+  --ix_popup_padding: 0.45rem 0.7rem;
+  --ix_popup_radius: 0.5rem;
+
+  font-size: 0.78rem;
+  line-height: 1.3;
+  letter-spacing: 0.015em;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    0 8px 18px -16px rgb(0 0 0 / 0.9);
+}
+
+.sol__ix_popup_profile_compact .sol__ix_popup_ring {
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklch, var(--site_style_accent, currentColor) 20%, transparent);
+}
+
+/* Profile: reliquary — a more ceremonial default for codex/lore fetches. */
+.sol__ix_popup_profile_reliquary {
+  --ix_popup_max_width: 26rem;
+  --ix_popup_padding: 0.9rem 1rem;
+  --ix_popup_radius: 0.95rem;
+  --ix_popup_bg_opacity: 0.88;
+
+  border-color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor) 48%,
+    transparent
+  );
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor) 10%,
+        transparent
+      ),
+      transparent 38%,
+      color-mix(in oklch, white 5%, transparent) 100%
+    ),
+    color-mix(in oklch, black var(--ix_popup_bg_opacity), transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    inset 0 0 32px
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor) 9%,
+        transparent
+      ),
+    0 18px 44px -26px rgb(0 0 0 / 0.95),
+    0 0 28px
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor) 18%,
+        transparent
+      );
+}
+
+.sol__ix_popup_profile_reliquary .sol__ix_popup_ring {
+  inset: 0.25rem;
+  border: 1px solid
+    color-mix(in oklch, var(--site_style_accent, currentColor) 20%, transparent);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.035),
+    0 0 18px
+      color-mix(
+        in oklch,
+        var(--site_style_accent, currentColor) 14%,
+        transparent
+      );
+}
+
+.sol__ix_popup_profile_reliquary .sol__ix_popup_slot {
+  color: color-mix(in oklch, white 92%, var(--site_style_accent, currentColor));
+}
+
+/* Profile: explanation — dictionary-style: the hovered/clicked word in
+   bold, the explanation below it, separated by a small margin. Opt in per
+   trigger via data-ix-profile="explanation"; interactions.js builds the
+   term/body split, this just styles it. */
+.sol__ix_popup_term {
+  display: block;
+  font-weight: 700;
+  margin-block-end: 0.4rem;
+}
+
+.sol__ix_popup_explanation_body[data-ix-fetch-pending="true"]:empty::after {
+  content: "\2026";
+  opacity: 0.6;
+}
+
+.sol__ix_popup[hidden] {
+  display: none;
+}
+
+.sol__ix_popup_pinned {
+  border-color: color-mix(
+    in oklch,
+    var(--site_style_accent, currentColor) var(--ix_popup_border_opacity_pinned),
+    transparent
+  );
+}
+
+.sol__ix_popup_ring {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px
+    color-mix(in oklch, var(--site_style_accent, currentColor) 12%, transparent);
+}
+
+.sol__ix_popup_slot {
+  position: relative;
+  color: color-mix(in oklch, white 88%, var(--site_style_accent, currentColor));
+}
+
+.sol__ix_popup_slot[data-ix-fetch-pending="true"]:empty::after {
+  content: "\2026";
+  opacity: 0.6;
+}
+
+.sol__ix_popup_door {
+  position: relative;
+  display: inline-block;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--site_style_accent, currentColor);
+  text-decoration-line: underline;
+}
+
+.sol__ix_popup_door[hidden] {
+  display: none;
+}
+
+/* Mobile: no hover, tight width, thumbs cover whatever's near the tap
+   point — a floating tooltip near the finger is the wrong shape here.
+   interactions.js skips setting inline left/top on this breakpoint
+   (see ix_is_mobile_viewport()) so this sheet placement isn't fighting
+   inline styles for specificity. */
+@media (max-width: 768px) {
+  .sol__ix_popup {
+    left: 0.5rem !important;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    top: auto !important;
+    max-width: none;
+    max-height: var(--ix_popup_sheet_max_height);
+    border-radius: var(--ix_popup_radius);
+  }
+
+  .sol__ix_popup_slot img {
+    max-height: 9rem;
+  }
+}

@@ -1,0 +1,159 @@
+/* fx library — combat subsystem shared by text and overlay combat feeds: tokens, brackets, palette
+   Split from components/text_effects.css 2026-07-02; bytes verbatim.
+   Loaded via css/index.css. Runtime counterpart: public/vendor/fx/js/. */
+
+.sol__text_fx_combat_feed {
+  --combat_feed_line_color: color-mix(
+    in oklch,
+    currentColor calc(74% + (8% * var(--text_fx_combat_feed_strength))),
+    transparent
+  );
+  --combat_feed_bracket_color: var(--combat_feed_line_color);
+  --combat_token_bracket_opacity: 0.74;
+  --combat_token_bracket_tracking: -0.08em;
+  --combat_token_bracket_weight: 640;
+  --text_fx_combat_feed_shadow: 0 0
+    calc(0.12em * var(--text_fx_combat_feed_strength))
+    color-mix(
+      in oklch,
+      var(--site_style_accent, currentColor)
+        calc(36% * var(--text_fx_combat_feed_strength)),
+      transparent
+    );
+
+  font-family: var(--default-mono-font-family, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+  color: var(--combat_feed_line_color);
+}
+
+.sol__text_fx.sol__text_fx_combat_feed.sol__text_fx_gradient,
+.sol__text_fx.sol__text_fx_combat_feed.sol__text_fx_rainbow {
+  background: none;
+  background-clip: border-box;
+  color: var(--combat_feed_line_color);
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+}
+
+.sol__text_fx_combat_feed .sol__combat_token {
+  -webkit-background-clip: border-box;
+  -webkit-text-fill-color: currentColor;
+  background: none;
+  background-clip: border-box;
+}
+
+.sol__combat_token {
+  margin-right: 0.5rem;
+
+  font-weight: 640;
+  letter-spacing: 0.03em;
+}
+
+.sol__combat_token_bracketed .sol__combat_token_bracket {
+  color: var(--combat_feed_bracket_color, currentColor);
+  opacity: var(--combat_token_bracket_opacity, 0.74);
+  letter-spacing: var(--combat_token_bracket_tracking, -0.08em);
+  font-weight: var(--combat_token_bracket_weight, 640);
+}
+
+.sol__combat_token_bracketed .sol__combat_token_label {
+  letter-spacing: 0.02em;
+}
+
+.sol__block_fx_combat_feed.sol__combat_brackets_soft,
+.sol__text_fx_combat_feed.sol__combat_brackets_soft {
+  --combat_token_bracket_opacity: 0.68;
+}
+
+.sol__block_fx_combat_feed.sol__combat_brackets_text_weight,
+.sol__text_fx_combat_feed.sol__combat_brackets_text_weight {
+  --combat_token_bracket_weight: 400;
+}
+
+/* Combat token palette — Quick Tune Variables (edit here first)
+   Intentionally fixed game-state colors, not theme-variant. */
+:where(
+  .sol__combat_token_crit,
+  .sol__combat_token_miss,
+  .sol__combat_token_buff,
+  .sol__combat_token_debuff,
+  .sol__combat_token_block,
+  .sol__combat_token_dodge,
+  .sol__combat_token_immune,
+  .sol__combat_token_resist,
+  .sol__combat_token_mega_crit,
+  .sol__combat_token_overkill,
+  .sol__combat_token_true_damage,
+  .sol__combat_token_guard_break,
+  .sol__combat_token_execute
+) {
+  --combat_crit: oklch(78% 0.19 29);
+  --combat_miss: oklch(72% 0.05 252);
+  --combat_buff: oklch(84% 0.15 146);
+  --combat_debuff: oklch(74% 0.17 24);
+  --combat_block: oklch(80% 0.12 85);
+  --combat_dodge: oklch(83% 0.11 210);
+  --combat_immune: oklch(86% 0.08 245);
+  --combat_resist: oklch(82% 0.1 115);
+  --combat_mega_crit: oklch(82% 0.23 25);
+  --combat_overkill: oklch(74% 0.2 20);
+  --combat_true_damage: oklch(83% 0.18 332);
+  --combat_guard_break: oklch(84% 0.14 85);
+  --combat_execute: oklch(80% 0.18 10);
+}
+
+.sol__combat_token_crit {
+  color: color-mix(in oklch, var(--combat_crit) 100%, currentColor);
+}
+
+.sol__combat_token_miss {
+  color: color-mix(in oklch, var(--combat_miss) 100%, currentColor);
+}
+
+.sol__combat_token_buff {
+  color: color-mix(in oklch, var(--combat_buff) 100%, currentColor);
+}
+
+.sol__combat_token_debuff {
+  color: color-mix(in oklch, var(--combat_debuff) 100%, currentColor);
+}
+
+.sol__combat_token_block {
+  color: color-mix(in oklch, var(--combat_block) 100%, currentColor);
+}
+
+.sol__combat_token_dodge {
+  color: color-mix(in oklch, var(--combat_dodge) 100%, currentColor);
+}
+
+.sol__combat_token_immune {
+  color: color-mix(in oklch, var(--combat_immune) 100%, currentColor);
+}
+
+.sol__combat_token_resist {
+  color: color-mix(in oklch, var(--combat_resist) 100%, currentColor);
+}
+
+.sol__combat_token_mega_crit {
+  color: color-mix(in oklch, var(--combat_mega_crit) 100%, currentColor);
+  text-shadow: 0 0 calc(0.16em * var(--text_fx_combat_feed_strength))
+    color-mix(in oklch, var(--combat_crit) 66%, transparent);
+}
+
+.sol__combat_token_overkill {
+  color: color-mix(in oklch, var(--combat_overkill) 100%, currentColor);
+}
+
+.sol__combat_token_true_damage {
+  color: color-mix(in oklch, var(--combat_true_damage) 100%, currentColor);
+}
+
+.sol__combat_token_guard_break {
+  color: color-mix(in oklch, var(--combat_guard_break) 100%, currentColor);
+}
+
+.sol__combat_token_execute {
+  color: color-mix(in oklch, var(--combat_execute) 100%, currentColor);
+  letter-spacing: 0.04em;
+}

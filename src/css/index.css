@@ -1,0 +1,17 @@
+/* fx library entry — import this once (base.css). */
+@import "./text.css";
+@import "./overlay.css";
+@import "./combat.css";
+@import "./interactions.css";
+@import "../gpu/gpu.css";
+@import "../pretext/styles.css";
+@import "../vision/styles.css";
+
+@media (prefers-reduced-motion: reduce) {
+  .sol__text_fx,
+  .sol__text_fx *,
+  .sol__block_fx::before,
+  .sol__block_fx::after {
+    animation: none !important;
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "scripts-of-folly",
+  "version": "0.1.0",
+  "type": "module",
+  "repository": "https://github.com/solarisael/scripts-of-folly",
+  "dependencies": {
+    "three": "^0.185.1",
+    "vgpu": "0.4.0",
+    "@chenglou/pretext": "0.0.8"
+  },
+  "exports": {
+    ".": "./src/js/api.js",
+    "./auto": "./src/js/index.js",
+    "./styles.css": "./src/css/index.css",
+    "./contract": "./src/js/contract.js",
+    "./text": "./src/js/text_effects.js",
+    "./interactions": "./src/js/interactions.js",
+    "./gpu": "./src/gpu/runtime.js",
+    "./markdown": "./src/markdown/text_effects_markdown.js",
+    "./remark": "./src/markdown/remark.js",
+    "./interaction-markdown": "./src/markdown/interaction_markdown.js",
+    "./marker-tree": "./src/markdown/marker_tree_utils.js",
+    "./vision": "./src/vision/banner.js",
+    "./vision/styles.css": "./src/vision/styles.css",
+    "./pretext": "./src/pretext/index.js",
+    "./transitions": "./src/pretext/transitions.js",
+    "./pretext/styles.css": "./src/pretext/styles.css"
+  },
+  "files": [
+    "src"
+  ],
+  "sideEffects": [
+    "./src/js/index.js",
+    "**/*.css"
+  ]
+}
