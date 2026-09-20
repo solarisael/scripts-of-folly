@@ -27,7 +27,7 @@ const NATIVE_TEXT_EFFECTS = Object.freeze([
   "cadence_childlike",
 ]);
 
-const PANEL_EFFECTS = Object.freeze(["terminal", "skill_popup"]);
+const PANEL_EFFECTS = Object.freeze(["skill_popup"]);
 const supported_effect_names = new Set([...TEXT_EFFECTS, ...PANEL_EFFECTS]);
 
 function collect_effect_names(element) {

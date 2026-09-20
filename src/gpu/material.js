@@ -18,7 +18,6 @@ import { build_effect as build_wiggle } from "./effects/wiggle.js";
 import { build_effect as build_float } from "./effects/float.js";
 import { build_effect as build_shake } from "./effects/shake.js";
 import { build_effect as build_glitch } from "./effects/glitch.js";
-import { build_effect as build_terminal } from "./effects/terminal.js";
 import { build_effect as build_skill_popup } from "./effects/skill_popup.js";
 
 const builders = Object.freeze({
@@ -40,7 +39,6 @@ const builders = Object.freeze({
   float: build_float,
   shake: build_shake,
   glitch: build_glitch,
-  terminal: build_terminal,
   skill_popup: build_skill_popup,
 });
 

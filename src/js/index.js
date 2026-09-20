@@ -5,10 +5,12 @@ import { hydrate_text_effects } from "./text_effects.js";
 import { hydrate_interactions } from "./interactions.js";
 import { install_pretext } from "../pretext/index.js";
 import { install_gpu_effects } from "../gpu/runtime.js";
+import { hydrate_terminal_effects } from "../terminal/runtime.js";
 
 const hydrate_all = (root_node) => {
   hydrate_text_effects(root_node);
   hydrate_interactions(root_node);
+  hydrate_terminal_effects(root_node);
 };
 
 const window_any = /** @type {any} */ (globalThis);

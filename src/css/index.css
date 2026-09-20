@@ -4,6 +4,7 @@
 @import "./combat.css";
 @import "./interactions.css";
 @import "../gpu/gpu.css";
+@import "../terminal/styles.css";
 @import "../pretext/styles.css";
 @import "../vision/styles.css";
 

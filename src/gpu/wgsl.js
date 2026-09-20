@@ -19,8 +19,7 @@ export const EFFECT_SLOTS = Object.freeze({
   float: 15,
   shake: 16,
   glitch: 17,
-  terminal: 18,
-  skill_popup: 19,
+  skill_popup: 18,
 });
 
 export const WGSL_SOURCE = String.raw`
@@ -35,9 +34,9 @@ struct VertexOut {
 @group(0) @binding(2) var<uniform> clip: vec4f;
 @group(0) @binding(3) var<uniform> surface: vec4f;
 @group(0) @binding(4) var<uniform> base: vec4f;
-@group(0) @binding(5) var<uniform> settings: array<vec4f, 20>;
-@group(0) @binding(6) var<uniform> colors: array<vec4f, 20>;
-@group(0) @binding(7) var<uniform> order: array<vec4f, 20>;
+@group(0) @binding(5) var<uniform> settings: array<vec4f, 19>;
+@group(0) @binding(6) var<uniform> colors: array<vec4f, 19>;
+@group(0) @binding(7) var<uniform> order: array<vec4f, 19>;
 @group(0) @binding(8) var<uniform> order_count: vec4f;
 @group(0) @binding(9) var glyph: texture_2d<f32>;
 @group(0) @binding(10) var glyph_sampler: sampler;
@@ -45,7 +44,7 @@ struct VertexOut {
 
 fn ordered_slot(slot: u32) -> bool {
   let count = u32(order_count.x);
-  for (var index: u32 = 0u; index < 20u; index = index + 1u) {
+  for (var index: u32 = 0u; index < 19u; index = index + 1u) {
     if (index >= count) {
       break;
     }
@@ -380,19 +379,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
   output = over(output, core_color, core_alpha);
 
-  if (surface.w > 0.5) {
-    if (effect_active(18u)) {
-      let speed = max(settings[18].z, 0.001);
-      let scan = 0.5 + 0.5 * sin(input.uv.y * max(surface.y, 1.0) * 4.18879 + time * speed * 1.2);
-      output = over(output, effect_color(18u), scan * settings[18].x * 0.12);
-    }
-    if (effect_active(19u)) {
-      let edge = min(min(input.uv.x, 1.0 - input.uv.x), min(input.uv.y, 1.0 - input.uv.y));
-      let border = 1.0 - smoothstep(0.0, 0.025 + settings[19].x * 0.025, edge);
-      output = over(output, effect_color(19u), border * settings[19].x * 0.34);
-      let glow = 1.0 - smoothstep(0.0, 0.48, distance(input.uv, vec2f(0.5)));
-      output = over(output, effect_color(19u), glow * settings[19].x * 0.05);
-    }
+  if (surface.w > 0.5 && effect_active(18u)) {
+    let edge = min(min(input.uv.x, 1.0 - input.uv.x), min(input.uv.y, 1.0 - input.uv.y));
+    let border = 1.0 - smoothstep(0.0, 0.025 + settings[18].x * 0.025, edge);
+    output = over(output, effect_color(18u), border * settings[18].x * 0.34);
+    let glow = 1.0 - smoothstep(0.0, 0.48, distance(input.uv, vec2f(0.5)));
+    output = over(output, effect_color(18u), glow * settings[18].x * 0.05);
   }
 
   return output;

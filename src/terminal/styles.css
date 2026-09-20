@@ -1,0 +1,66 @@
+folly-terminal {
+  --folly_terminal_halo_radius: 3rem;
+  --folly_terminal_scheme: 0;
+
+  position: relative;
+  isolation: isolate;
+  display: block;
+  min-width: 0;
+  margin-block: clamp(2rem, 6vw, 4rem);
+}
+
+folly-terminal > .folly-terminal-canvas {
+  position: absolute;
+  z-index: 0;
+  inset-block: -4rem;
+  inset-inline: -4rem;
+  display: block;
+  width: calc(100% + 8rem);
+  height: calc(100% + 8rem);
+  pointer-events: none;
+}
+
+folly-terminal > .sol__block_fx_terminal {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+folly-terminal[data-folly-terminal-renderer="vgpu"] > .sol__block_fx_terminal,
+folly-terminal[data-folly-terminal-renderer="vgpu"]
+  > .sol__block_fx_terminal
+  * {
+  animation: none !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+  text-shadow: none !important;
+}
+
+folly-terminal[data-folly-terminal-renderer="vgpu"]
+  > .sol__block_fx_terminal::before,
+folly-terminal[data-folly-terminal-renderer="vgpu"]
+  > .sol__block_fx_terminal::after {
+  content: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  folly-terminal {
+    --folly_terminal_scheme: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  folly-terminal {
+    margin-block: 2.5rem;
+  }
+
+  folly-terminal > .folly-terminal-canvas {
+    inset-block: -3rem;
+    inset-inline: -2rem;
+    width: calc(100% + 4rem);
+    height: calc(100% + 6rem);
+  }
+}

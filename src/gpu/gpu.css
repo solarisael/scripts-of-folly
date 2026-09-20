@@ -22,7 +22,6 @@
   -webkit-text-fill-color: transparent !important;
 }
 
-[data-folly-gpu-panel="ready"].sol__block_fx_terminal::before,
 [data-folly-gpu-panel="ready"].sol__block_fx_skill_popup::before {
   display: none !important;
 }

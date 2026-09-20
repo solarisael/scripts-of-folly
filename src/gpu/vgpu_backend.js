@@ -1,6 +1,6 @@
 import { WGSL_SOURCE, EFFECT_SLOTS } from "./wgsl.js";
 
-const EFFECT_COUNT = 20;
+const EFFECT_COUNT = 19;
 
 function finite(value, fallback = 0) {
   return Number.isFinite(Number(value)) ? Number(value) : fallback;

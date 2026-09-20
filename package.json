@@ -5,7 +5,8 @@
   "repository": "https://github.com/solarisael/scripts-of-folly",
   "dependencies": {
     "three": "^0.185.1",
-    "vgpu": "0.4.0",
+    "@vgpu/wgsl-std": "^0.4.1",
+    "vgpu": "^0.4.1",
     "@chenglou/pretext": "0.0.8"
   },
   "exports": {
@@ -16,6 +17,7 @@
     "./text": "./src/js/text_effects.js",
     "./interactions": "./src/js/interactions.js",
     "./gpu": "./src/gpu/runtime.js",
+    "./terminal": "./src/terminal/runtime.js",
     "./markdown": "./src/markdown/text_effects_markdown.js",
     "./remark": "./src/markdown/remark.js",
     "./interaction-markdown": "./src/markdown/interaction_markdown.js",
