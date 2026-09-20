@@ -1,4 +1,4 @@
-import terminal_source from "./terminal.wgsl";
+import terminal_source from "./terminal_shader.js";
 import { build_glyph_atlas } from "./glyph_atlas.js";
 
 const PIXEL_TIERS = [

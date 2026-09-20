@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "type": "module",
   "repository": "https://github.com/solarisael/scripts-of-folly",
+  "scripts": {
+    "build:terminal-shader": "bun scripts/build_terminal_shader.js"
+  },
   "dependencies": {
     "three": "^0.185.1",
-    "@vgpu/wgsl-std": "^0.4.1",
     "vgpu": "^0.4.1",
     "@chenglou/pretext": "0.0.8"
+  },
+  "devDependencies": {
+    "@vgpu/wgsl-std": "^0.4.1"
   },
   "exports": {
     ".": "./src/js/api.js",

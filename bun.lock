@@ -6,9 +6,11 @@
       "name": "scripts-of-folly",
       "dependencies": {
         "@chenglou/pretext": "0.0.8",
-        "@vgpu/wgsl-std": "^0.4.1",
         "three": "^0.185.1",
         "vgpu": "^0.4.1",
+      },
+      "devDependencies": {
+        "@vgpu/wgsl-std": "^0.4.1",
       },
     },
   },
