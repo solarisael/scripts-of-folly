@@ -12,6 +12,7 @@ function dispose_renderer(renderer) {
 
 export async function create_webgl_backend(canvas, options = {}) {
   const { is_alive = () => true, on_lost = () => {} } = options;
+
   const context = canvas.getContext("webgl2", {
     alpha: true,
     antialias: false,
@@ -65,6 +66,7 @@ export async function create_webgl_backend(canvas, options = {}) {
 
   function resize(next_width, next_height, next_dpr = 1) {
     if (disposed) return;
+
     width = Math.max(1, Number(next_width) || 1);
     height = Math.max(1, Number(next_height) || 1);
     dpr = Math.max(1, Number(next_dpr) || 1);
@@ -84,7 +86,9 @@ export async function create_webgl_backend(canvas, options = {}) {
     kind = "text",
   ) {
     if (disposed || !is_alive()) return null;
+
     let texture;
+    let soft_texture;
     let built;
     let geometry;
     try {
@@ -94,16 +98,28 @@ export async function create_webgl_backend(canvas, options = {}) {
           width: 1,
           height: 1,
         });
+
       texture = new THREE.CanvasTexture(source);
       texture.colorSpace = THREE.NoColorSpace;
+      soft_texture = captured?.soft_canvas
+        ? new THREE.CanvasTexture(captured.soft_canvas)
+        : texture;
+      soft_texture.colorSpace = THREE.NoColorSpace;
       built =
         kind === "transition"
           ? create_transition_material(texture, captured)
-          : create_effect_material(texture, effect_names, parameter_sets);
+          : create_effect_material(
+              texture,
+              soft_texture,
+              captured,
+              effect_names,
+              parameter_sets,
+            );
       geometry = new THREE.PlaneGeometry(1, 1);
       const mesh = new THREE.Mesh(geometry, built.material);
       mesh.frustumCulled = false;
       await renderer.compileAsync(mesh, camera, scene);
+
       if (disposed || !is_alive())
         throw new Error("WebGL capture became stale");
       mesh.visible = false;
@@ -113,6 +129,7 @@ export async function create_webgl_backend(canvas, options = {}) {
         mesh,
         material: built.material,
         texture,
+        soft_texture,
         geometry,
         time: built.time,
         transition: built.transition,
@@ -127,6 +144,7 @@ export async function create_webgl_backend(canvas, options = {}) {
           built.dispose();
           geometry.dispose();
           texture.dispose();
+          if (soft_texture !== texture) soft_texture.dispose();
         },
       };
       handles.add(handle);
@@ -135,15 +153,18 @@ export async function create_webgl_backend(canvas, options = {}) {
       built?.dispose?.();
       geometry?.dispose?.();
       texture?.dispose?.();
+      if (soft_texture && soft_texture !== texture) soft_texture.dispose();
       throw error;
     }
   }
 
   async function render(entries, time_seconds = 0) {
     if (disposed || !is_alive()) return;
+
     renderer.setScissorTest(false);
     renderer.clear(true, true, true);
     renderer.setScissorTest(true);
+
     for (const handle of handles) handle.mesh.visible = false;
     for (const entry of entries ?? []) {
       const handle = entry?.handle;
@@ -159,7 +180,9 @@ export async function create_webgl_backend(canvas, options = {}) {
       const top = Math.max(0, Math.min(height, Number(clip.top) || 0));
       const right = Math.max(left, Math.min(width, Number(clip.right) || 0));
       const bottom = Math.max(top, Math.min(height, Number(clip.bottom) || 0));
+
       if (right <= left || bottom <= top) continue;
+
       const mesh = handle.mesh;
       mesh.position.set(
         (Number(rect.left) || 0) + (Number(rect.width) || 0) / 2,
@@ -171,9 +194,11 @@ export async function create_webgl_backend(canvas, options = {}) {
         Math.max(0, Number(rect.height) || 0),
         1,
       );
+
       handle.time.value = Number(time_seconds) || 0;
       handle.transition?.value.fromArray(entry.transition ?? [0, 0, 0, 0]);
       mesh.visible = true;
+
       renderer.setScissor(
         left,
         top,
@@ -188,6 +213,7 @@ export async function create_webgl_backend(canvas, options = {}) {
 
   function dispose() {
     if (disposed) return;
+
     disposed = true;
     canvas.removeEventListener?.("webglcontextlost", context_lost, false);
     for (const handle of [...handles]) handle.dispose();

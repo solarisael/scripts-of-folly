@@ -1,3 +1,4 @@
+import { BLUR_RADII } from "./blur_levels.js";
 import { TRANSITION_WGSL } from "./transition_wgsl.js";
 
 export const EFFECT_SLOTS = Object.freeze({
@@ -41,6 +42,7 @@ struct VertexOut {
 @group(0) @binding(9) var glyph: texture_2d<f32>;
 @group(0) @binding(10) var glyph_sampler: sampler;
 @group(0) @binding(11) var<uniform> transition: vec4f;
+@group(0) @binding(12) var soft_glyph: texture_2d<f32>;
 
 fn ordered_slot(slot: u32) -> bool {
   let count = u32(order_count.x);
@@ -79,24 +81,34 @@ fn sample_rgba(uv: vec2f) -> vec4f {
 fn sample_mask(uv: vec2f) -> f32 {
   return sample_rgba(uv).a;
 }
+fn sample_soft_mask(uv: vec2f, layer: f32) -> f32 {
+  if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {
+    return 0.0;
+  }
+  let atlas_uv = vec2f(uv.x, (layer + uv.y) / ${BLUR_RADII.length}.0);
+  return textureSampleLevel(soft_glyph, glyph_sampler, atlas_uv, 0.0).a;
+}
 
 fn soft_mask(uv: vec2f, radius: vec2f) -> f32 {
-  let x = vec2f(radius.x, 0.0);
-  let y = vec2f(0.0, radius.y);
-  let d = vec2f(radius.x, radius.y);
-  return sample_mask(uv) * 0.24
-    + sample_mask(uv + x) * 0.11
-    + sample_mask(uv - x) * 0.11
-    + sample_mask(uv + y) * 0.11
-    + sample_mask(uv - y) * 0.11
-    + sample_mask(uv + d) * 0.05
-    + sample_mask(uv + vec2f(-radius.x, radius.y)) * 0.05
-    + sample_mask(uv + vec2f(radius.x, -radius.y)) * 0.05
-    + sample_mask(uv - d) * 0.05
-    + sample_mask(uv + x * 2.0) * 0.03
-    + sample_mask(uv - x * 2.0) * 0.03
-    + sample_mask(uv + y * 2.0) * 0.03
-    + sample_mask(uv - y * 2.0) * 0.03;
+  let radii = array<f32, ${BLUR_RADII.length}>(${BLUR_RADII.map((value) => `${value}.0`).join(", ")});
+  let requested = max(radius.x * surface.x, radius.y * surface.y);
+  var level = f32(${BLUR_RADII.length - 1});
+  for (var index = 0; index < ${BLUR_RADII.length - 1}; index += 1) {
+    if (requested <= radii[index + 1]) {
+      level = f32(index) + clamp(
+        (requested - radii[index]) / (radii[index + 1] - radii[index]),
+        0.0, 1.0
+      );
+      break;
+    }
+  }
+
+  let lower = floor(level);
+  return mix(
+    sample_soft_mask(uv, lower),
+    sample_soft_mask(uv, min(lower + 1.0, f32(${BLUR_RADII.length - 1}))),
+    fract(level)
+  );
 }
 
 fn over(under: vec4f, rgb: vec3f, alpha: f32) -> vec4f {
@@ -111,6 +123,7 @@ fn over(under: vec4f, rgb: vec3f, alpha: f32) -> vec4f {
 fn css_to_uv(offset: vec2f) -> vec2f {
   return offset / max(surface.xy, vec2f(1.0));
 }
+
 fn wiggle_motion(phase: f32) -> vec3f {
   let p = fract(phase);
   if (p < 0.25) {
@@ -199,10 +212,12 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
     vec2f(0.0, 0.0), vec2f(1.0, 0.0), vec2f(0.0, 1.0),
     vec2f(0.0, 1.0), vec2f(1.0, 0.0), vec2f(1.0, 1.0)
   );
+
   let uv = points[vertex_index];
   let css = rect.xy + uv * surface.xy;
   let ndc = vec2f(css.x / max(frame.x, 1.0) * 2.0 - 1.0,
     1.0 - css.y / max(frame.y, 1.0) * 2.0);
+
   var output: VertexOut;
   output.position = vec4f(ndc, 0.0, 1.0);
   output.uv = uv;
@@ -230,22 +245,26 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     uv = vec2f(0.5) + rotated;
     uv.y += motion.y * amount * max(surface.z, 1.0) / max(surface.y, 1.0);
   }
+
   if (effect_active(15u)) {
     let speed = max(settings[15].z, 0.001);
     let amount = settings[15].x * settings[15].y;
     let phase = fract(time * speed / 2.8);
     uv.y -= sin(phase * 3.14159265) * amount * 0.4 * max(surface.z, 1.0) / max(surface.y, 1.0);
   }
+
   if (effect_active(16u)) {
     let speed = max(settings[16].z, 0.001);
     let amount = settings[16].x * settings[16].y * max(surface.z, 1.0) / max(surface.xy, vec2f(1.0));
     uv += shake_motion(time * speed / 0.7) * amount;
   }
+
   if (effect_active(17u)) {
     let speed = max(settings[17].z, 0.001);
     let amount = settings[17].x * settings[17].y * max(surface.z, 1.0) / max(surface.xy, vec2f(1.0));
     uv += glitch_motion(time * speed / 1.05) * amount;
   }
+
   if (effect_active(11u)) {
     let phase = fract(time * max(settings[11].z, 0.001) / 2.4);
     let pulse = sin(phase * 3.14159265);
@@ -274,6 +293,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     output = over(output, vec3f(0.0), soft_mask(uv - shadow_offset * 3.0, px * 2.0) * 0.38);
     output = over(output, effect_color(2u), soft_mask(uv, px * 1.5) * 0.22);
   }
+
   if (effect_active(0u)) {
     let strength = settings[0].x * 1.35;
     let unit = css_to_uv(vec2f(surface.z, surface.z));
@@ -281,6 +301,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     output = over(output, effect_color(0u), soft_mask(uv, unit * (0.42 * strength)) * 0.36);
     output = over(output, effect_color(0u), soft_mask(uv, unit * (0.22 * strength)) * 0.58);
   }
+
   if (effect_active(1u)) {
     let strength = settings[1].x;
     let unit = css_to_uv(vec2f(surface.z, surface.z));
@@ -288,6 +309,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     output = over(output, effect_color(1u), soft_mask(uv, unit * (0.24 * strength)) * 0.52);
     output = over(output, effect_color(1u), soft_mask(uv, unit * (0.4 * strength)) * 0.36);
   }
+
   if (effect_active(3u)) {
     let strength = settings[3].x;
     let shift = css_to_uv(vec2f(strength * surface.z * 0.05, 0.0));
@@ -301,21 +323,25 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     let white = vec3f(1.0);
     core_color = mix(mix(base.rgb, white, 0.14), gradient, uv.x);
   }
+
   if (effect_active(6u)) {
     let phase = uv.x * 6.2831853;
     let rainbow = 0.5 + 0.5 * cos(phase + vec3f(0.0, 2.094, 4.188));
     core_color = mix(core_color, rainbow, clamp(settings[6].x, 0.0, 1.0));
   }
+
   if (effect_active(4u)) {
     let strength = settings[4].x;
     core_mask = soft_mask(uv, px * (1.0 + 2.0 * strength));
   }
+
   if (effect_active(8u)) {
     let strength = settings[8].x;
     let unit = css_to_uv(vec2f(surface.z, surface.z));
     output = over(output, effect_color(8u), soft_mask(uv, unit * (0.44 * strength)) * 0.26);
     output = over(output, effect_color(8u), soft_mask(uv, unit * (0.24 * strength)) * 0.42);
   }
+
   if (effect_active(9u)) {
     let strength = settings[9].x * 1.35;
     let highlight = sample_mask(uv - css_to_uv(vec2f(0.0, surface.z * 0.02)));
@@ -325,6 +351,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     output = over(output, base.rgb, soft_mask(uv, unit * (0.16 * strength)) * 0.38);
     output = over(output, vec3f(0.0), shade * 0.62);
   }
+
   if (effect_active(10u)) {
     let strength = settings[10].x * 1.45;
     let unit = css_to_uv(vec2f(surface.z, surface.z));
@@ -332,6 +359,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     output = over(output, base.rgb, soft_mask(uv, unit * (0.18 * strength)) * 0.32);
     motion_scale *= clamp(0.72 - 0.08 * strength, 0.1, 1.0);
   }
+
   if (effect_active(11u)) {
     let phase = fract(time * max(settings[11].z, 0.001) / 2.4);
     let pulse = sin(phase * 3.14159265);
@@ -341,6 +369,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     output = over(output, effect_color(11u), soft_mask(uv, unit * (0.16 * strength)) * 0.44);
     output = over(output, effect_color(11u), base_mask * pulse * 0.05 * strength);
   }
+
   if (effect_active(12u)) {
     let strength = settings[12].x * 1.45;
     let unit = css_to_uv(vec2f(surface.z, surface.z));
@@ -350,12 +379,14 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     let center = 1.0 - smoothstep(0.0, 0.52, abs(uv.x - 0.48));
     output = over(output, effect_color(12u), center * 0.08 * strength);
   }
+
   if (effect_active(13u)) {
     let oracle = 0.5 + 0.5 * sin(uv.x * 14.0);
     let unit = css_to_uv(vec2f(surface.z, surface.z));
     output = over(output, effect_color(13u), soft_mask(uv, unit * 0.32) * 0.24);
     output = over(output, effect_color(13u), base_mask * oracle * 0.24 * settings[13].x);
   }
+
   if (effect_active(17u)) {
     let strength = settings[17].x;
     let shift = css_to_uv(vec2f(strength * surface.z * 0.04, 0.0));
@@ -364,19 +395,23 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
 
   var core_alpha = core_mask * motion_scale;
+
   if (effect_active(5u)) {
     let speed = max(settings[5].z, 0.001);
     core_alpha *= flicker_alpha(time * speed / 1.8, settings[5].y * 1.25);
   }
+
   if (effect_active(11u)) {
     let phase = fract(time * max(settings[11].z, 0.001) / 2.4);
     let pulse = sin(phase * 3.14159265);
     core_alpha *= 1.0 - 0.08 * settings[11].y * (1.0 - pulse);
   }
+
   if (effect_active(12u)) {
     core_alpha *= 1.0 - 0.16 * settings[12].x;
     core_color = mix(core_color, vec3f(1.0), clamp(0.22 + 0.08 * settings[12].x * 1.45, 0.0, 1.0));
   }
+
   output = over(output, core_color, core_alpha);
 
   if (surface.w > 0.5 && effect_active(18u)) {

@@ -1,3 +1,5 @@
+import { BLUR_RADII } from "./blur_levels.js";
+
 const READY_ATTRIBUTE = "data-folly-gpu-text";
 const CAPTURE_ATTRIBUTE = "data-folly-capture";
 const PRETEXT_FRAGMENT_SELECTOR = ".sol__pretext_fragment";
@@ -108,10 +110,12 @@ function draw_pretext_fragments({ element, context, bounds, inset }) {
   for (const fragment of fragments) {
     const raw_text = fragment.textContent || "";
     if (!raw_text.trim()) continue;
+
     const range = doc.createRange();
     range.selectNodeContents(fragment);
     const fragment_rect = range.getBoundingClientRect();
     if (!fragment_rect.width && !fragment_rect.height) continue;
+
     const style = view.getComputedStyle(fragment);
     const text = display_text(raw_text, style);
     context.font = font_string(style);
@@ -122,6 +126,7 @@ function draw_pretext_fragments({ element, context, bounds, inset }) {
         ? `${letter_spacing}px`
         : "0px";
     }
+
     const metrics = context.measureText(text);
     const ascent =
       metrics.fontBoundingBoxAscent || Number.parseFloat(style.fontSize) || 0;
@@ -148,12 +153,14 @@ function draw_native_text({ element, context, bounds, inset, doc, view }) {
         ? `${letter_spacing}px`
         : "0px";
     }
+
     for (const run of line_runs(node, doc)) {
       const value = display_text(
         node.nodeValue.slice(run.start, run.end),
         style,
       );
       if (!value.trim()) continue;
+
       const metrics = context.measureText(value);
       const ascent =
         metrics.fontBoundingBoxAscent || Number.parseFloat(style.fontSize) || 0;
@@ -168,8 +175,12 @@ function draw_native_text({ element, context, bounds, inset, doc, view }) {
 }
 
 /** Capture settled native text ink into a reusable transparent canvas. */
-export function capture_text(element, { dpr = 1, padding = 8 } = {}) {
+export function capture_text(
+  element,
+  { dpr = 1, padding = 8, soft = false } = {},
+) {
   if (!element || element.nodeType !== 1) return null;
+
   const requestedDpr = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
   const inset = Number.isFinite(padding) && padding >= 0 ? padding : 0;
   const doc = element.ownerDocument;
@@ -180,6 +191,7 @@ export function capture_text(element, { dpr = 1, padding = 8 } = {}) {
   const captureValue = element.getAttribute(CAPTURE_ATTRIBUTE);
   element.removeAttribute(READY_ATTRIBUTE);
   element.setAttribute(CAPTURE_ATTRIBUTE, "");
+
   try {
     const bounds = element.getBoundingClientRect();
     const width = Math.max(1, bounds.width + inset * 2);
@@ -191,6 +203,7 @@ export function capture_text(element, { dpr = 1, padding = 8 } = {}) {
     canvas.style.height = `${height}px`;
     const context = canvas.getContext("2d");
     if (!context) return null;
+
     context.scale(requestedDpr, requestedDpr);
     context.textBaseline = "alphabetic";
     const fragments = text_fragments(element);
@@ -198,8 +211,35 @@ export function capture_text(element, { dpr = 1, padding = 8 } = {}) {
       ? (draw_pretext_fragments({ element, context, bounds, inset }),
         view.getComputedStyle(fragments[0]))
       : draw_native_text({ element, context, bounds, inset, doc, view });
+    let soft_canvas = null;
+    if (soft) {
+      soft_canvas = doc.createElement("canvas");
+      soft_canvas.width = canvas.width;
+      soft_canvas.height = canvas.height * BLUR_RADII.length;
+      const soft_context = soft_canvas.getContext("2d");
+      if (!soft_context || !("filter" in soft_context)) return null;
+
+      for (const [index, radius] of BLUR_RADII.entries()) {
+        const top = index * canvas.height;
+        soft_context.save();
+        soft_context.beginPath();
+        soft_context.rect(0, top, canvas.width, canvas.height);
+        soft_context.clip();
+        soft_context.filter = radius
+          ? `blur(${radius * requestedDpr}px)`
+          : "none";
+        soft_context.drawImage(canvas, 0, top);
+        soft_context.restore();
+      }
+    }
+
+    const font_size = first_style
+      ? Number.parseFloat(first_style.fontSize) || 0
+      : 0;
+
     return {
       canvas,
+      soft_canvas,
       width,
       height,
       padding: inset,
@@ -209,7 +249,7 @@ export function capture_text(element, { dpr = 1, padding = 8 } = {}) {
         width: bounds.width,
         height: bounds.height,
       },
-      font_size: first_style ? Number.parseFloat(first_style.fontSize) || 0 : 0,
+      font_size,
       base_color: first_style ? color(first_style) : "rgba(255, 255, 255, 1)",
     };
   } finally {

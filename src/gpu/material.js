@@ -1,5 +1,6 @@
 import * as THREE from "three/webgpu";
 import * as tsl from "three/tsl";
+import { BLUR_RADII } from "./blur_levels.js";
 import { build_effect as build_glow } from "./effects/glow.js";
 import { build_effect as build_neon } from "./effects/neon.js";
 import { build_effect as build_shadow } from "./effects/shadow.js";
@@ -49,6 +50,7 @@ const motion_effects = new Set([
   "glitch",
   "sigil_pulse",
 ]);
+
 const finite = (value, fallback) =>
   Number.isFinite(Number(value)) ? Number(value) : fallback;
 
@@ -97,6 +99,8 @@ function resolve_parameter_set(parameter_sets, name, index) {
 
 export function create_effect_material(
   texture,
+  soft_texture,
+  captured,
   effect_names = [],
   parameter_sets = {},
 ) {
@@ -105,6 +109,12 @@ export function create_effect_material(
   texture.wrapS = THREE.ClampToEdgeWrapping;
   texture.wrapT = THREE.ClampToEdgeWrapping;
   texture.colorSpace = THREE.NoColorSpace;
+  soft_texture.minFilter = THREE.LinearFilter;
+  soft_texture.magFilter = THREE.LinearFilter;
+  soft_texture.wrapS = THREE.ClampToEdgeWrapping;
+  soft_texture.wrapT = THREE.ClampToEdgeWrapping;
+  soft_texture.colorSpace = THREE.NoColorSpace;
+  soft_texture.needsUpdate = true;
   texture.needsUpdate = true;
 
   const material = new THREE.MeshBasicNodeMaterial({
@@ -117,12 +127,49 @@ export function create_effect_material(
 
   const time = tsl.uniform(0, "float").setName("follyEffectTime");
   const source = tsl.texture(texture);
-  const sample = (coordinate) => {
+  const soft_source = tsl.texture(soft_texture);
+
+  const sample = (coordinate, radius = null) => {
     const inside = tsl
       .step(tsl.vec2(0, 0), coordinate)
       .mul(tsl.step(coordinate, tsl.vec2(1, 1)));
     const mask = inside.x.mul(inside.y);
-    return source.sample(coordinate).mul(tsl.vec4(mask, mask, mask, mask));
+    let ink;
+
+    if (radius && soft_texture !== texture) {
+      const requested = tsl.max(
+        radius.x.mul(captured.width),
+        radius.y.mul(captured.height),
+      );
+      let level = tsl.float(BLUR_RADII.length - 1);
+      for (let index = BLUR_RADII.length - 2; index >= 0; index -= 1) {
+        const span = BLUR_RADII[index + 1] - BLUR_RADII[index];
+        const fraction = tsl.clamp(
+          requested.sub(BLUR_RADII[index]).div(span),
+          0,
+          1,
+        );
+        level = tsl.select(
+          requested.lessThanEqual(BLUR_RADII[index + 1]),
+          tsl.float(index).add(fraction),
+          level,
+        );
+      }
+      const lower = tsl.floor(level);
+      const upper = tsl.min(lower.add(1), BLUR_RADII.length - 1);
+      const layer = (index) =>
+        soft_source.sample(
+          tsl.vec2(
+            coordinate.x,
+            coordinate.y.add(index).div(BLUR_RADII.length),
+          ),
+        );
+      ink = tsl.mix(layer(lower), layer(upper), tsl.fract(level));
+    } else {
+      ink = source.sample(coordinate);
+    }
+
+    return ink.mul(tsl.vec4(mask, mask, mask, mask));
   };
 
   const names = Array.from(effect_names ?? []);
@@ -171,6 +218,7 @@ export function create_effect_material(
   }
 
   material.fragmentNode = tsl.vec4(rgba.rgb, tsl.clamp(rgba.a, 0, 1));
+
   let disposed = false;
   return {
     material,

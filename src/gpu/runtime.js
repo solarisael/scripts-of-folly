@@ -11,6 +11,18 @@ import "./gpu.css";
 const TEXT_READY_ATTRIBUTE = "data-folly-gpu-text";
 const PANEL_READY_ATTRIBUTE = "data-folly-gpu-panel";
 const CAPTURE_ATTRIBUTE = "data-folly-capture";
+const SOFT_EFFECTS = new Set([
+  "glow",
+  "neon",
+  "shadow",
+  "blur",
+  "aura",
+  "etch",
+  "whisper",
+  "sigil_pulse",
+  "veil",
+  "cadence_oracular",
+]);
 const DYNAMIC_ATTRIBUTES = new Set([
   "class",
   "style",
@@ -39,6 +51,7 @@ function is_internal_node(value) {
       value.hasAttribute("data-folly-probe"))
   );
 }
+
 function element_is_in_root(element, root) {
   return root.nodeType === 9
     ? root.documentElement.contains(element)
@@ -84,6 +97,7 @@ function clipping_overflow(style) {
 function target_is_transitioning(element) {
   return element.closest?.(".sol__pretext_transitioning") != null;
 }
+
 function effective_effect_names(element) {
   const lineage = [];
   let current = element;
@@ -111,6 +125,7 @@ function has_nested_effect_owner(element, query_root) {
   }
   return false;
 }
+
 function capture_representable(element) {
   return (
     !element.matches?.(
@@ -121,6 +136,7 @@ function capture_representable(element) {
     )
   );
 }
+
 function target_is_representable(element) {
   const names = effective_effect_names(element);
   return is_panel_target(names) || capture_representable(element);
@@ -143,6 +159,7 @@ function make_panel_capture(element) {
     base_color: "rgb(0, 0, 0)",
   };
 }
+
 export function install_gpu_effects({
   root = document,
   backend = "auto",
@@ -176,11 +193,13 @@ export function install_gpu_effects({
   let failed = false;
   let fallback_attempted = backend === "webgl2";
   let recovering = false;
+
   function current_reduced_motion() {
     return (
       view.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
     );
   }
+
   function report_failure(error) {
     if (warned_failure_epoch === epoch) return;
     warned_failure_epoch = epoch;
@@ -232,6 +251,7 @@ export function install_gpu_effects({
   function dispose_item(target) {
     const item = items.get(target);
     if (!item) return;
+
     items.delete(target);
     dirty_targets.delete(target);
     resize_observer?.unobserve?.(target);
@@ -287,6 +307,7 @@ export function install_gpu_effects({
     )
       return;
     if (!render_dirty && current_reduced_motion()) return;
+
     const request = () => {
       frame_timer = 0;
       if (!dead) animation_frame = view.requestAnimationFrame(draw_frame);
@@ -322,6 +343,13 @@ export function install_gpu_effects({
     if (!renderer_state) return;
     const viewport = viewport_size();
     const dpr = Math.min(1.5, Math.max(1, view.devicePixelRatio || 1));
+    if (canvas) {
+      // The GPU frame uses the full viewport, including any stable scrollbar gutter.
+      const width = `${viewport.width}px`;
+      const height = `${viewport.height}px`;
+      if (canvas.style.width !== width) canvas.style.width = width;
+      if (canvas.style.height !== height) canvas.style.height = height;
+    }
     renderer_state.resize(viewport.width, viewport.height, dpr);
   }
 
@@ -347,6 +375,7 @@ export function install_gpu_effects({
 
   function visible_clip(item) {
     if (document_value.visibilityState === "hidden") return null;
+
     const target = item.target;
     const style = view.getComputedStyle(target);
     if (
@@ -355,6 +384,7 @@ export function install_gpu_effects({
       Number(style.opacity) === 0
     )
       return null;
+
     const target_rect = target.getBoundingClientRect();
     const rect = {
       left: target_rect.left + (target_rect.width - item.width) / 2,
@@ -367,6 +397,7 @@ export function install_gpu_effects({
       height: item.height,
     };
     if (!finite_rect(rect) || rect.width <= 0 || rect.height <= 0) return null;
+
     const viewport = viewport_size();
     const clip = {
       left: Math.max(0, rect.left),
@@ -395,10 +426,12 @@ export function install_gpu_effects({
       ancestor = ancestor.parentElement;
     }
     if (clip.right <= clip.left || clip.bottom <= clip.top) return null;
+
     const center_x = (clip.left + clip.right) / 2;
     const center_y = (clip.top + clip.bottom) / 2;
     const hit = document_value.elementFromPoint?.(center_x, center_y);
     if (hit && hit !== target && !target.contains(hit)) return null;
+
     return clip;
   }
 
@@ -433,6 +466,7 @@ export function install_gpu_effects({
       return;
     }
     if (draw_promise) return;
+
     let keep_animating = false;
     let retry_after_draw = false;
     draw_promise = (async () => {
@@ -441,6 +475,7 @@ export function install_gpu_effects({
         const entry = item_entry(item);
         if (entry) entries.push(entry);
       }
+
       if (!entries.length) {
         if (!empty_frame_cleared) {
           await renderer_state.render([], 0);
@@ -457,6 +492,7 @@ export function install_gpu_effects({
         animation_time += Math.max(0, frame_time - previous_frame_time) / 1000;
       }
       previous_frame_time = frame_time;
+
       try {
         await renderer_state.render(
           entries.map(({ handle, rect, clip }) => ({ handle, rect, clip })),
@@ -492,6 +528,7 @@ export function install_gpu_effects({
 
   async function recover_from_loss(loss_error) {
     if (dead || recovering) return;
+
     recovering = true;
     const lost_backend = renderer_state?.backend;
     epoch += 1;
@@ -503,6 +540,7 @@ export function install_gpu_effects({
     renderer_state = null;
     canvas?.remove();
     canvas = null;
+
     try {
       if (lost_backend === "webgl2" || fallback_attempted) {
         failed = true;
@@ -521,6 +559,7 @@ export function install_gpu_effects({
       }
     } catch (error) {
       if (dead || recovery_epoch !== epoch) return;
+
       failed = true;
       report_failure(
         loss_error
@@ -538,6 +577,7 @@ export function install_gpu_effects({
   async function boot_renderer(requested_backend = backend) {
     if (renderer_state || dead || failed) return renderer_state;
     if (boot_promise) return boot_promise;
+
     const token = epoch;
     boot_promise = (async () => {
       canvas = make_canvas();
@@ -546,16 +586,19 @@ export function install_gpu_effects({
         is_alive: () => is_alive(token),
         on_lost: (loss_error) => recover_from_loss(loss_error),
       });
+
       if (!created || !is_alive(token)) {
         created?.dispose?.();
         canvas?.remove();
         canvas = null;
         return null;
       }
+
       renderer_state = created;
       canvas = created.canvas || canvas;
       canvas.dataset.follyRenderer = created.backend;
       update_surface_size();
+
       return renderer_state;
     })();
     try {
@@ -564,6 +607,7 @@ export function install_gpu_effects({
       return result;
     } catch (error) {
       if (dead || token !== epoch) return null;
+
       failed = true;
       report_failure(error);
       restore_all_targets();
@@ -579,18 +623,22 @@ export function install_gpu_effects({
     const panel = is_panel_target(names);
     dispose_item(target);
     restore_target(target);
+
     let captured = panel ? make_panel_capture(target) : null;
+    const soft = !panel && names.some((name) => SOFT_EFFECTS.has(name));
     if (!panel) {
       target.setAttribute(CAPTURE_ATTRIBUTE, "");
       try {
         captured = capture_text(target, {
           dpr: Math.min(1.5, Math.max(1, view.devicePixelRatio || 1)),
-          padding: 8,
+          padding: soft ? 64 : 8,
+          soft,
         });
       } finally {
         target.removeAttribute(CAPTURE_ATTRIBUTE);
       }
     }
+
     if (!panel && !captured) {
       restore_target(target);
       dirty_targets.delete(target);
@@ -602,9 +650,11 @@ export function install_gpu_effects({
       !element_is_in_root(target, root)
     )
       return;
+
     const parameter_sets = names.map((name) =>
       read_effect_parameters(target, name, captured),
     );
+
     let handle;
     try {
       handle = await renderer_state.prepare(
@@ -622,10 +672,12 @@ export function install_gpu_effects({
       backend_error.folly_backend_failure = true;
       throw backend_error;
     }
+
     if (!handle || !is_alive(token) || !renderer_state) {
       handle?.dispose?.();
       return;
     }
+
     const rect = target.getBoundingClientRect();
     const item = {
       target,
@@ -643,6 +695,7 @@ export function install_gpu_effects({
 
   function find_targets() {
     const targets = [];
+
     if (
       is_element(query_root) &&
       effective_effect_names(query_root).length &&
@@ -651,6 +704,7 @@ export function install_gpu_effects({
       !has_nested_effect_owner(query_root, query_root)
     )
       targets.push(query_root);
+
     for (const element of query_root.querySelectorAll?.("*") || []) {
       if (
         !is_internal_node(element) &&
@@ -661,13 +715,16 @@ export function install_gpu_effects({
       )
         targets.push(element);
     }
+
     return targets;
   }
 
   async function refresh_targets() {
     if (dead || failed) return;
+
     const token = epoch;
     await boot_renderer();
+
     if (!renderer_state || !is_alive(token)) return;
     const targets = find_targets();
     const target_set = new Set(targets);
@@ -675,6 +732,7 @@ export function install_gpu_effects({
       if (!target_set.has(target) || !element_is_in_root(target, root))
         dispose_item(target);
     }
+
     for (const target of targets) {
       const names = effective_effect_names(target);
       const existing = items.get(target);
@@ -683,6 +741,7 @@ export function install_gpu_effects({
       if (changed || dirty_targets.has(target))
         await prepare_target(target, names, token);
     }
+
     update_surface_size();
     render_dirty = true;
     schedule_draw();
@@ -694,6 +753,7 @@ export function install_gpu_effects({
       queued_again = true;
       return;
     }
+
     const refresh_epoch = epoch;
     refresh_promise = Promise.resolve().then(async () => {
       try {
@@ -724,6 +784,7 @@ export function install_gpu_effects({
       }
     });
   }
+
   function handle_mutations(records) {
     let changed = false;
     for (const record of records) {
@@ -764,8 +825,10 @@ export function install_gpu_effects({
         changed = true;
       }
     }
+
     if (changed) schedule_refresh();
   }
+
   function add_listener(target, name, callback, options) {
     target?.addEventListener?.(name, callback, options);
     cleanup.push(() => target?.removeEventListener?.(name, callback, options));
@@ -815,6 +878,7 @@ export function install_gpu_effects({
       },
       { passive: true },
     );
+
     add_listener(
       view,
       "scroll",
@@ -824,6 +888,7 @@ export function install_gpu_effects({
       },
       { passive: true, capture: true },
     );
+
     add_listener(document_value, "visibilitychange", () => {
       if (document_value.visibilityState === "hidden") {
         restore_all_targets();
@@ -834,14 +899,17 @@ export function install_gpu_effects({
         schedule_refresh();
       }
     });
+
     add_listener(document_value, "htmx:afterSwap", () => {
       mark_all_dirty();
       schedule_refresh();
     });
+
     add_listener(document_value, "htmx:historyRestore", () => {
       mark_all_dirty();
       schedule_refresh();
     });
+
     add_listener(document_value, "folly:pretext-before-layout", (event) => {
       const fragment = event.detail?.element || event.target;
       for (const target of [...items.keys()]) {
@@ -849,18 +917,22 @@ export function install_gpu_effects({
           dispose_item(target);
       }
     });
+
     add_listener(document_value, "folly:pretext-layout", () => {
       mark_all_dirty();
       schedule_refresh();
     });
+
     add_listener(document_value.fonts, "loadingdone", () => {
       mark_all_dirty();
       schedule_refresh();
     });
+
     add_listener(document_value.fonts, "loadingerror", () => {
       mark_all_dirty();
       schedule_refresh();
     });
+
     media_query = view.matchMedia?.("(prefers-reduced-motion: reduce)");
     media_query_listener = () => {
       previous_frame_time = null;
@@ -876,11 +948,13 @@ export function install_gpu_effects({
 
   async function refresh() {
     if (dead) return;
+
     failed = false;
     fallback_attempted = backend === "webgl2";
     warned_failure_epoch = -1;
     mark_all_dirty();
     schedule_refresh();
+
     while (!dead && refresh_promise) {
       const pending_refresh = refresh_promise;
       await pending_refresh;
@@ -889,6 +963,7 @@ export function install_gpu_effects({
 
   function dispose() {
     if (dead) return;
+
     dead = true;
     epoch += 1;
     queued_again = false;
@@ -904,6 +979,8 @@ export function install_gpu_effects({
   }
 
   attach_observers();
+
   schedule_refresh();
+
   return { refresh, dispose };
 }

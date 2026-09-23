@@ -10,6 +10,7 @@ function color(value, fallback = [0, 0, 0]) {
   if (!Array.isArray(value) && !ArrayBuffer.isView(value)) return fallback;
   return [finite(value[0]), finite(value[1]), finite(value[2])];
 }
+
 function physical_size(canvas, captured) {
   const source_width = finite(canvas?.width, 0);
   const source_height = finite(canvas?.height, 0);
@@ -56,6 +57,7 @@ function set_initial_values(drawable, captured, packed, kind) {
   const base_color = color(captured.base_color, [1, 1, 1]);
   const width = Math.max(1, finite(captured.width, 1));
   const height = Math.max(1, finite(captured.height, 1));
+
   drawable.set({
     frame: [width, height, 0, 1],
     rect: [0, 0, width, height],
@@ -82,14 +84,17 @@ function update_values(handle, entry, time_seconds, viewport) {
   const width = Math.max(1, finite(captured.width, rect.width));
   const height = Math.max(1, finite(captured.height, rect.height));
   const base_color = color(captured.base_color, [1, 1, 1]);
+
   handle.frame_values[0] = Math.max(1, finite(viewport.width, width));
   handle.frame_values[1] = Math.max(1, finite(viewport.height, height));
   handle.frame_values[2] = finite(time_seconds);
   handle.frame_values[3] = Math.max(1, finite(viewport.dpr, 1));
+
   handle.rect_values[0] = finite(rect.left);
   handle.rect_values[1] = finite(rect.top);
   handle.rect_values[2] = Math.max(1, finite(rect.width, width));
   handle.rect_values[3] = Math.max(1, finite(rect.height, height));
+
   handle.clip_values[0] = finite(clip.left);
   handle.clip_values[1] = finite(clip.top);
   handle.clip_values[2] = finite(
@@ -100,6 +105,7 @@ function update_values(handle, entry, time_seconds, viewport) {
     clip.bottom,
     handle.rect_values[1] + handle.rect_values[3],
   );
+
   handle.surface_values[0] = width;
   handle.surface_values[1] = height;
   handle.surface_values[2] = Math.max(1, finite(captured.font_size, 16));
@@ -108,6 +114,7 @@ function update_values(handle, entry, time_seconds, viewport) {
   handle.base_values[1] = base_color[1];
   handle.base_values[2] = base_color[2];
   handle.base_values[3] = 1;
+
   handle.transition_values.set(entry.transition ?? [0, 0, 0, 0]);
   drawable.set({
     frame: handle.frame_values,
@@ -125,6 +132,7 @@ function update_values(handle, entry, time_seconds, viewport) {
 
 async function copy_capture(gpu, texture, captured, width, height) {
   if (!captured?.canvas) throw new Error("vgpu capture has no canvas");
+
   const queue = gpu.gpu?.queue;
   if (!queue || typeof queue.copyExternalImageToTexture !== "function") {
     throw new Error("vgpu native queue cannot upload a capture");
@@ -157,7 +165,9 @@ export async function create_vgpu_backend(
 
   const { init, surface, draw, frame, sampler } = await import("vgpu");
   if (!is_alive()) return null;
+
   const gpu = await init();
+
   const canvas_format =
     navigator.gpu.getPreferredCanvasFormat?.() ?? "bgra8unorm";
   let disposed = false;
@@ -187,6 +197,7 @@ export async function create_vgpu_backend(
       colorSpace: "srgb",
       label: "folly-vgpu.surface",
     });
+
     unsubscribe_error = gpu.onError((error) => notify_lost(error));
     if (typeof gpu.gpu?.addEventListener === "function") {
       const on_uncaptured = (event) => notify_lost(event.error ?? event);
@@ -194,6 +205,7 @@ export async function create_vgpu_backend(
       unsubscribe_uncaptured = () =>
         gpu.gpu.removeEventListener?.("uncapturederror", on_uncaptured);
     }
+
     if (gpu.gpu?.lost && typeof gpu.gpu.lost.then === "function") {
       gpu.gpu.lost.then((info) => notify_lost(info));
     }
@@ -204,11 +216,13 @@ export async function create_vgpu_backend(
 
   const resize = (width, height, dpr = 1) => {
     if (disposed) return;
+
     current_dpr = Math.max(1, finite(dpr, 1));
     const next_size = [
       Math.max(1, Math.round(finite(width, current_size[0]) * current_dpr)),
       Math.max(1, Math.round(finite(height, current_size[1]) * current_dpr)),
     ];
+
     if (next_size[0] === current_size[0] && next_size[1] === current_size[1])
       return;
     canvas_surface.resize(next_size);
@@ -224,15 +238,18 @@ export async function create_vgpu_backend(
     if (disposed || !is_alive()) throw new Error("vgpu backend is not alive");
     if (!captured?.canvas)
       throw new Error("vgpu prepare requires a captured canvas");
+
     const [texture_width, texture_height] = physical_size(
       captured.canvas,
       captured,
     );
+
     const capture = {
       ...captured,
       width: Math.max(1, finite(captured.width, texture_width)),
       height: Math.max(1, finite(captured.height, texture_height)),
     };
+
     const [width, height] = [capture.width, capture.height];
     const [upload_width, upload_height] = [texture_width, texture_height];
     const texture = gpu.device.createTexture({
@@ -241,6 +258,15 @@ export async function create_vgpu_backend(
       format: "rgba8unorm",
       usage: ["copy_dst", "texture_binding", "render_attachment"],
     });
+    const soft_texture = captured.soft_canvas
+      ? gpu.device.createTexture({
+          label: "folly-vgpu.soft-capture",
+          size: [upload_width, captured.soft_canvas.height],
+          format: "rgba8unorm",
+          usage: ["copy_dst", "texture_binding"],
+        })
+      : texture;
+
     let glyph_sampler;
     let packed;
     let drawable;
@@ -261,6 +287,7 @@ export async function create_vgpu_backend(
         kind === "transition" ? [] : effect_names,
         parameter_sets,
       );
+
       drawable = draw(gpu, {
         label: `folly-vgpu.${kind}`,
         shader: WGSL_SOURCE,
@@ -269,19 +296,31 @@ export async function create_vgpu_backend(
         depth: false,
         set: {
           glyph: texture,
+          soft_glyph: soft_texture,
           glyph_sampler,
         },
       });
+
       await copy_capture(gpu, texture, captured, upload_width, upload_height);
+      if (soft_texture !== texture)
+        await copy_capture(
+          gpu,
+          soft_texture,
+          { canvas: captured.soft_canvas },
+          upload_width,
+          captured.soft_canvas.height,
+        );
       await drawable.compile({ colors: [canvas_format] });
       await gpu.settled();
     } catch (error) {
       texture.dispose();
+      if (soft_texture !== texture) soft_texture.dispose();
       drawable?.dispose?.();
       throw error;
     }
     if (disposed || !is_alive()) {
       texture.dispose();
+      if (soft_texture !== texture) soft_texture.dispose();
       drawable.dispose?.();
       throw new Error("vgpu prepare became stale");
     }
@@ -289,6 +328,7 @@ export async function create_vgpu_backend(
     const handle = {
       drawable,
       texture,
+      soft_texture,
       glyph_sampler,
       captured: capture,
       settings: packed.settings,
@@ -316,6 +356,7 @@ export async function create_vgpu_backend(
         this.disposed = true;
         handles.delete(this);
         this.texture.dispose();
+        if (this.soft_texture !== this.texture) this.soft_texture.dispose();
         this.drawable.dispose?.();
       },
     };
@@ -345,6 +386,7 @@ export async function create_vgpu_backend(
     });
     await gpu.settled();
   };
+
   const dispose = () => {
     if (disposed) return;
     disposed = true;
