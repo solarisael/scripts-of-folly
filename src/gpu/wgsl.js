@@ -1,4 +1,4 @@
-import { BLUR_RADII } from "./blur_levels.js";
+import { BLUR_RADII, WIDE_CAPTURE_PADDING } from "./blur_levels.js";
 import { TRANSITION_WGSL } from "./transition_wgsl.js";
 
 export const EFFECT_SLOTS = Object.freeze({
@@ -21,7 +21,33 @@ export const EFFECT_SLOTS = Object.freeze({
   shake: 16,
   glitch: 17,
   skill_popup: 18,
+  rift: 19,
 });
+
+/*
+The ink simplex functions below include code adapted from @vgpu/wgsl-std 0.4.1.
+
+MIT License
+Copyright (c) 2025 Vercel, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
 
 export const WGSL_SOURCE = String.raw`
 struct VertexOut {
@@ -35,9 +61,9 @@ struct VertexOut {
 @group(0) @binding(2) var<uniform> clip: vec4f;
 @group(0) @binding(3) var<uniform> surface: vec4f;
 @group(0) @binding(4) var<uniform> base: vec4f;
-@group(0) @binding(5) var<uniform> settings: array<vec4f, 19>;
-@group(0) @binding(6) var<uniform> colors: array<vec4f, 19>;
-@group(0) @binding(7) var<uniform> order: array<vec4f, 19>;
+@group(0) @binding(5) var<uniform> settings: array<vec4f, 20>;
+@group(0) @binding(6) var<uniform> colors: array<vec4f, 20>;
+@group(0) @binding(7) var<uniform> order: array<vec4f, 20>;
 @group(0) @binding(8) var<uniform> order_count: vec4f;
 @group(0) @binding(9) var glyph: texture_2d<f32>;
 @group(0) @binding(10) var glyph_sampler: sampler;
@@ -46,7 +72,7 @@ struct VertexOut {
 
 fn ordered_slot(slot: u32) -> bool {
   let count = u32(order_count.x);
-  for (var index: u32 = 0u; index < 19u; index = index + 1u) {
+  for (var index: u32 = 0u; index < 20u; index = index + 1u) {
     if (index >= count) {
       break;
     }
@@ -63,6 +89,86 @@ fn effect_active(slot: u32) -> bool {
 
 fn hash21(point: vec2f) -> f32 {
   return fract(sin(dot(point, vec2f(127.1, 311.7))) * 43758.5453);
+}
+
+// Keep the plume field on the menu's @vgpu/wgsl-std 0.4.1 simplex lattice.
+fn ink_pcg3(value: vec3u) -> vec3u {
+  var hashed = value * 1664525u + 1013904223u;
+  hashed.x = hashed.x + hashed.y * hashed.z;
+  hashed.y = hashed.y + hashed.z * hashed.x;
+  hashed.z = hashed.z + hashed.x * hashed.y;
+  hashed = hashed ^ (hashed >> vec3u(16u));
+  hashed.x = hashed.x + hashed.y * hashed.z;
+  hashed.y = hashed.y + hashed.z * hashed.x;
+  hashed.z = hashed.z + hashed.x * hashed.y;
+  hashed = hashed ^ (hashed >> vec3u(16u));
+  return hashed;
+}
+
+fn ink_grad_dot(index: u32, d: vec3f) -> f32 {
+  let pair = index / 4u;
+  let a = select(d.x, d.y, pair == 2u);
+  let b = select(select(d.y, d.z, pair == 1u), d.z, pair == 2u);
+  let sa = select(a, -a, (index & 1u) != 0u);
+  let sb = select(b, -b, (index & 2u) != 0u);
+  return sa + sb;
+}
+
+fn ink_simplex_kernel(cell: vec3i, d: vec3f) -> f32 {
+  let t = 0.5 - dot(d, d);
+  if (t <= 0.0) { return 0.0; }
+  let t2 = t * t;
+  let index = ink_pcg3(bitcast<vec3u>(cell)).x % 12u;
+  return t2 * t2 * ink_grad_dot(index, d);
+}
+
+fn ink_simplex(position: vec3f) -> f32 {
+  let skew = (position.x + position.y + position.z) * 0.3333333333333333;
+  let base = floor(position + vec3f(skew));
+  let cell = vec3i(base);
+  let unskew = (base.x + base.y + base.z) * 0.16666666666666666;
+  let d0 = position - (base - vec3f(unskew));
+  var o1 = vec3f(0.0);
+  var o2 = vec3f(0.0);
+  if (d0.x >= d0.y) {
+    if (d0.y >= d0.z)      { o1 = vec3f(1.0, 0.0, 0.0); o2 = vec3f(1.0, 1.0, 0.0); }
+    else if (d0.x >= d0.z) { o1 = vec3f(1.0, 0.0, 0.0); o2 = vec3f(1.0, 0.0, 1.0); }
+    else                   { o1 = vec3f(0.0, 0.0, 1.0); o2 = vec3f(1.0, 0.0, 1.0); }
+  } else {
+    if (d0.y < d0.z)       { o1 = vec3f(0.0, 0.0, 1.0); o2 = vec3f(0.0, 1.0, 1.0); }
+    else if (d0.x < d0.z)  { o1 = vec3f(0.0, 1.0, 0.0); o2 = vec3f(0.0, 1.0, 1.0); }
+    else                   { o1 = vec3f(0.0, 1.0, 0.0); o2 = vec3f(1.0, 1.0, 0.0); }
+  }
+  let d1 = d0 - o1 + vec3f(0.16666666666666666);
+  let d2 = d0 - o2 + vec3f(0.3333333333333333);
+  let d3 = d0 - vec3f(1.0) + vec3f(0.5);
+  let total = ink_simplex_kernel(cell, d0)
+    + ink_simplex_kernel(cell + vec3i(o1), d1)
+    + ink_simplex_kernel(cell + vec3i(o2), d2)
+    + ink_simplex_kernel(cell + vec3i(1, 1, 1), d3);
+  return 76.0 * total;
+}
+
+fn ink_fbm(position: vec3f) -> f32 {
+  var sum = 0.0;
+  var amplitude = 1.0;
+  var sample = position;
+  for (var i = 0; i < 3; i = i + 1) {
+    sum += amplitude * ink_simplex(sample);
+    sample *= 2.0;
+    amplitude *= 0.5;
+  }
+  return sum / 1.75;
+}
+
+
+fn menu_sdr(color: vec3f) -> vec3f {
+  let encoded = select(
+    pow(color, vec3f(1.0 / 2.4)) * 1.055 - vec3f(0.055),
+    color * 12.92,
+    color <= vec3f(0.0031308)
+  );
+  return mix(color, encoded, 0.42);
 }
 
 fn effect_color(slot: u32) -> vec3f {
@@ -283,6 +389,7 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let base_mask = sample_mask(uv);
   var core_mask = base_mask;
   var output = vec4f(0.0);
+  var rift_pigment = 0.0;
   let px = vec2f(dpr / max(surface.x, 1.0), dpr / max(surface.y, 1.0));
 
   if (effect_active(2u)) {
@@ -292,6 +399,46 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     output = over(output, vec3f(0.0), soft_mask(uv - shadow_offset * 1.8, px * 2.0) * 0.64);
     output = over(output, vec3f(0.0), soft_mask(uv - shadow_offset * 3.0, px * 2.0) * 0.38);
     output = over(output, effect_color(2u), soft_mask(uv, px * 1.5) * 0.22);
+  }
+
+  if (effect_active(19u)) {
+    let aspect = surface.x / surface.y;
+    let p = (uv - vec2f(0.5)) * vec2f(aspect, 1.0);
+    let drift = time * 0.07;
+    let current = vec2f(
+      ink_fbm(vec3f(p * 1.65, drift)),
+      ink_fbm(vec3f(p * 1.65 + vec2f(13.7, 8.2), drift + 4.3))
+    );
+    let warped = p + current * 0.12 * min(aspect, 1.0);
+    let body_signal = ink_fbm(vec3f(warped * 3.4 + current * 0.8, drift * 0.6));
+    let eddies = ink_simplex(vec3f(warped * 8.0 + current * 2.2, drift * 0.45));
+
+    let margin = vec2f(0.4, 0.9) * surface.z * settings[19].x;
+    let extent = max(
+      surface.xy * 0.5 - vec2f(${WIDE_CAPTURE_PADDING}.0) + margin,
+      vec2f(surface.z * 0.55)
+    ) / surface.y;
+    let normalized = abs(warped / extent);
+    let radius = pow(pow(normalized.x, 3.0) + pow(normalized.y, 3.0), 1.0 / 3.0);
+    let edge = radius - 1.0 + body_signal * 0.18 + eddies * 0.035;
+    let dense = 1.0 - smoothstep(-0.035, 0.035, edge);
+    let wash = 1.0 - smoothstep(-0.015, 0.20, edge + body_signal * 0.05);
+    let mist = (1.0 - smoothstep(-0.015, 0.55, edge + body_signal * 0.05))
+      * (0.08 + 0.12 * smoothstep(0.34, 0.67, body_signal * 0.5 + 0.5));
+    let pigment = max(clamp(dense * 0.98 + wash * 0.22, 0.0, 0.995), mist);
+    rift_pigment = pigment;
+    let wet_edge = max(wash - dense, 0.0) * 0.012;
+
+    // The plume field and palette follow Solarisael's portal ink shaders.
+    let shadow = vec3f(0.001, 0.0015, 0.0025)
+      + vec3f(0.45, 0.55, 0.65) * wet_edge
+      + vec3f(0.002, 0.003, 0.004) * clamp(body_signal + 0.5, 0.0, 1.0);
+    let radiance = mix(vec3f(0.72, 0.70, 0.63), vec3f(1.0, 0.98, 0.91),
+      clamp(body_signal + 0.5 + wet_edge * 12.0, 0.0, 1.0));
+    let dark_scheme = smoothstep(0.45, 0.75, dot(base.rgb, vec3f(0.21, 0.72, 0.07)));
+    let palette = menu_sdr(mix(shadow, radiance, dark_scheme));
+    let color = select(palette, effect_color(19u), colors[19].a > 0.5);
+    output = over(output, color, pigment);
   }
 
   if (effect_active(0u)) {
@@ -318,6 +465,12 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
 
   var core_color = sample_rgba(uv).rgb;
+  if (effect_active(19u)) {
+    let dark_scheme = smoothstep(0.45, 0.75, dot(base.rgb, vec3f(0.21, 0.72, 0.07)));
+    core_color = select(core_color,
+      mix(vec3f(1.0, 0.98, 0.91), vec3f(0.002, 0.0025, 0.003), dark_scheme),
+      rift_pigment >= 0.5);
+  }
   if (effect_active(7u)) {
     let gradient = mix(base.rgb, effect_color(7u), clamp(settings[7].x, 0.0, 1.0));
     let white = vec3f(1.0);

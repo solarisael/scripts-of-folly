@@ -4,6 +4,7 @@ const TEXT_EFFECTS = Object.freeze([
   "glow",
   "neon",
   "shadow",
+  "rift",
   "chroma",
   "blur",
   "flicker",

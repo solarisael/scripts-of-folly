@@ -20,6 +20,7 @@ function channel_value(style, effect_name, channel_name) {
     .trim();
   return clamp_channel(effect_value || text_marker || block_marker || 1);
 }
+
 function css_multiplier(style, property_name) {
   const value = Number.parseFloat(style.getPropertyValue(property_name));
   return Number.isFinite(value) ? value : 1;
@@ -97,6 +98,7 @@ export function read_effect_parameters(element, effect_name, captured) {
     motion,
     speed,
     accent,
+    color_override: Boolean(effect_color || marker_color),
     base_color,
     size,
     font_size,

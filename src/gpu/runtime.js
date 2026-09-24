@@ -1,3 +1,4 @@
+import { WIDE_CAPTURE_PADDING } from "./blur_levels.js";
 import { capture_text } from "./text_capture.js";
 import { read_effect_parameters } from "./parameters.js";
 import { create_renderer, dispose_renderer } from "./renderer.js";
@@ -631,7 +632,7 @@ export function install_gpu_effects({
       try {
         captured = capture_text(target, {
           dpr: Math.min(1.5, Math.max(1, view.devicePixelRatio || 1)),
-          padding: soft ? 64 : 8,
+          padding: soft || names.includes("rift") ? WIDE_CAPTURE_PADDING : 8,
           soft,
         });
       } finally {

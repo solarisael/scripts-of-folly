@@ -4,6 +4,7 @@ import { BLUR_RADII } from "./blur_levels.js";
 import { build_effect as build_glow } from "./effects/glow.js";
 import { build_effect as build_neon } from "./effects/neon.js";
 import { build_effect as build_shadow } from "./effects/shadow.js";
+import { build_effect as build_rift } from "./effects/rift.js";
 import { build_effect as build_chroma } from "./effects/chroma.js";
 import { build_effect as build_blur } from "./effects/blur.js";
 import { build_effect as build_flicker } from "./effects/flicker.js";
@@ -25,6 +26,7 @@ const builders = Object.freeze({
   glow: build_glow,
   neon: build_neon,
   shadow: build_shadow,
+  rift: build_rift,
   chroma: build_chroma,
   blur: build_blur,
   flicker: build_flicker,
@@ -179,13 +181,12 @@ export function create_effect_material(
       throw new Error(`Unknown GPU effect: ${String(name)}`);
     }
     const effect_name = typeof name === "string" ? name : `effect_${index}`;
+    const values = resolve_parameter_set(parameter_sets, effect_name, index);
     return {
       name: effect_name,
       builder,
-      params: parameter_nodes(
-        resolve_parameter_set(parameter_sets, effect_name, index),
-        time,
-      ),
+      params: parameter_nodes(values, time),
+      color_override: values.color_override === true,
     };
   });
 
@@ -211,6 +212,8 @@ export function create_effect_material(
       rgba,
       sample,
       params: entry.params,
+      padding: captured.padding ?? 0,
+      color_override: entry.color_override,
       mode: "shade",
     });
     if (result?.uv) uv = result.uv;

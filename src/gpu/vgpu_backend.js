@@ -1,6 +1,6 @@
 import { WGSL_SOURCE, EFFECT_SLOTS } from "./wgsl.js";
 
-const EFFECT_COUNT = 19;
+const EFFECT_COUNT = 20;
 
 function finite(value, fallback = 0) {
   return Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -48,6 +48,8 @@ function pack_effects(effect_names, parameter_sets) {
     settings_row[2] = finite(params.speed, 1);
     settings_row[3] = finite(params.font_size);
     colors[slot].set(color(params.accent));
+    if (slot === EFFECT_SLOTS.rift && params.color_override)
+      colors[slot][3] = 1;
   }
   order_count[0] = Math.min(EFFECT_COUNT, effect_names.length);
   return { settings, colors, order, order_count };
@@ -263,7 +265,7 @@ export async function create_vgpu_backend(
           label: "folly-vgpu.soft-capture",
           size: [upload_width, captured.soft_canvas.height],
           format: "rgba8unorm",
-          usage: ["copy_dst", "texture_binding"],
+          usage: ["copy_dst", "texture_binding", "render_attachment"],
         })
       : texture;
 
