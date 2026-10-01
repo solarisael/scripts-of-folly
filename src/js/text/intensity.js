@@ -3,6 +3,7 @@ import {
   resolve_text_fx_effects_with_stack_rules,
   split_text_fx_tokens,
 } from "./normalization.js";
+
 const text_fx_intensity_min = TEXT_FX_INTENSITY_MIN;
 const text_fx_intensity_max = TEXT_FX_INTENSITY_MAX;
 
@@ -73,6 +74,7 @@ const apply_text_fx_effect_vars = (node_value, effect_names) => {
       [motion_var_name, motion_intensity],
       [speed_var_name, speed_intensity],
     ];
+
     for (const [name, value] of channel_names) {
       if (value == null) {
         remove_css_property_if_present(node_value.style, name);
@@ -102,6 +104,7 @@ const apply_text_fx_intensity_vars = (
   if (!(node_value instanceof HTMLElement)) {
     return;
   }
+
   const visual_intensity = parse_text_fx_intensity_value(
     node_value.dataset.textFxIntensity,
   );

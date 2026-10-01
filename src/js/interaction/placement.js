@@ -68,6 +68,7 @@ const position_popup_near = (popup_el, anchor_el) => {
     viewport_height,
     margin,
   );
+
   const best_fit =
     placements.find((placement) => placement.fits) ?? placements[0];
 

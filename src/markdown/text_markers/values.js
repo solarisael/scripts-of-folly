@@ -2,6 +2,7 @@ import {
   TEXT_FX_INTENSITY_MIN,
   TEXT_FX_INTENSITY_MAX,
 } from "../../js/contract.js";
+
 const text_fx_intensity_min = TEXT_FX_INTENSITY_MIN;
 const text_fx_intensity_max = TEXT_FX_INTENSITY_MAX;
 const intensity_segment_regex = /^(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)$/;
@@ -111,6 +112,7 @@ const assign_marker_intensity = (
       return;
     }
   }
+
   warning_reasons.push(`extra intensity '${raw_segment}'${context_label}`);
   values.invalid = true;
 };
@@ -122,15 +124,18 @@ const assign_marker_color = (
   context_label,
 ) => {
   const color_value = normalize_text_fx_color_value(raw_segment);
+
   if (!color_value) {
     warning_reasons.push(`invalid value '${raw_segment}'${context_label}`);
     values.invalid = true;
     return;
   }
+
   if (values.color === null) {
     values.color = color_value;
     return;
   }
+
   warning_reasons.push(`extra color '${raw_segment}'${context_label}`);
   values.invalid = true;
 };
@@ -147,6 +152,7 @@ const classify_marker_value_segments = (
     color: null,
     invalid: false,
   };
+
   for (const raw_segment of raw_segments) {
     if (!raw_segment) {
       continue;

@@ -126,6 +126,7 @@ export const layout_pretext_root = (root) => {
   if (!Number.isFinite(width) || width <= 0) return false;
 
   emit(root, "folly:pretext-before-layout");
+
   const source = read_source(root);
   if (!source || !source.items.length) return false;
 

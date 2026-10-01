@@ -56,6 +56,7 @@ const build_text_fx_data_attributes = ({
       `data-text-fx-${effect_name.replaceAll("_", "-")}-`,
     );
   }
+
   return chunks.length ? ` ${chunks.join(" ")}` : "";
 };
 
@@ -72,9 +73,11 @@ const build_text_fx_style_attribute = ({
     { visual_intensity, motion_intensity, speed_intensity, color },
     "--text_fx_marker_",
   );
+
   for (const [effect_name, settings] of Object.entries(effect_settings)) {
     append_style_properties(chunks, settings, `--text_fx_${effect_name}_`);
   }
+
   return chunks.length ? ` style="${chunks.join(";")}"` : "";
 };
 
@@ -112,6 +115,7 @@ const build_text_fx_span_html = (
   const raw_effect_names = Array.isArray(effect_name_or_names)
     ? effect_name_or_names
     : [effect_name_or_names];
+
   const safe_effect_names = raw_effect_names
     .map((raw_effect_name) => normalize_text_fx_name(raw_effect_name))
     .filter(Boolean);

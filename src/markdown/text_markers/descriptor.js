@@ -7,6 +7,7 @@ import {
   normalize_text_fx_name,
 } from "../../js/contract.js";
 import { classify_marker_value_segments } from "./values.js";
+
 const text_fx_effect_names = TEXT_FX_TEXT_EFFECT_NAMES;
 const text_fx_block_effect_names = TEXT_FX_BLOCK_EFFECT_NAMES;
 const text_fx_inline_block_effect_names = TEXT_FX_INLINE_BLOCK_EFFECT_NAMES;
@@ -121,6 +122,7 @@ const blocking_effect_in_stack = (effect_name, accepted_effect_names) => {
       return accepted_effect_name;
     }
   }
+
   return null;
 };
 
@@ -132,6 +134,7 @@ const store_effect_settings = (effect_settings, parsed_token) => {
     speed_intensity,
     color,
   } = parsed_token;
+
   if (
     visual_intensity != null ||
     motion_intensity != null ||
@@ -170,19 +173,23 @@ const append_effect_token = (raw_token, token_count, stack) => {
     raw_token,
     stack.warning_reasons,
   );
+
   if (!parsed_token) {
     stack.warning_reasons.push(`invalid token '${raw_token}'`);
     return;
   }
+
   const { effect_name } = parsed_token;
   if (stack.seen_effect_names.has(effect_name)) {
     stack.warning_reasons.push(`duplicate token '${effect_name}'`);
     return;
   }
+
   if (token_count > 1 && text_fx_block_effect_name_set.has(effect_name)) {
     accept_block_stack_token(parsed_token, stack);
     return;
   }
+
   const blocked_by = blocking_effect_in_stack(
     effect_name,
     stack.accepted_effect_names,
@@ -193,6 +200,7 @@ const append_effect_token = (raw_token, token_count, stack) => {
     );
     return;
   }
+
   accept_effect_token(parsed_token, stack);
 };
 
@@ -207,6 +215,7 @@ const normalize_stack_color = (color, effect_names, warning_reasons) => {
   ) {
     return color;
   }
+
   warning_reasons.push(
     `color '${color.token}' dropped: no color-capable effect in stack`,
   );
@@ -217,39 +226,48 @@ const parse_marker_effect_descriptor = (raw_descriptor) => {
   if (typeof raw_descriptor !== "string") {
     return null;
   }
+
   const segments = raw_descriptor
     .trim()
     .toLowerCase()
     .split(":")
     .map((segment) => segment.trim());
+
   const raw_effect_tokens = segments[0];
   if (!raw_effect_tokens) {
     return null;
   }
+
   const effect_tokens = raw_effect_tokens
     .split("|")
     .map((token) => token.trim())
     .filter(Boolean);
+
   const stack = {
     warning_reasons: [],
     accepted_effect_names: [],
     effect_settings: {},
     seen_effect_names: new Set(),
   };
+
   for (const effect_token of effect_tokens) {
     append_effect_token(effect_token, effect_tokens.length, stack);
   }
+
   if (!stack.accepted_effect_names.length) {
     return null;
   }
+
   const values = classify_marker_value_segments(
     segments.slice(1),
     stack.warning_reasons,
     "",
   );
+
   if (values.invalid) {
     return null;
   }
+
   return {
     effect_names: normalize_effect_stack_for_output(
       stack.accepted_effect_names,

@@ -13,6 +13,7 @@ const resolve_ix_url = (raw_url) => {
   }
 
   const ix_site_base_path = resolve_ix_base_path();
+
   if (
     !ix_site_base_path ||
     raw_url === ix_site_base_path ||

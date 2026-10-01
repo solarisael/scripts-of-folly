@@ -96,7 +96,6 @@ fn linear_to_srgb(color: vec3f) -> vec3f {
   return select(low, high, clamped > vec3f(0.0031308));
 }
 
-
 @fragment fn fs_main(input: VertexOutput) -> @location(0) vec4f {
   let uv_value = input.uv_value;
   let effect_uv = vec2f(uv_value.x, 1.0 - uv_value.y);
@@ -217,11 +216,13 @@ export const create_vgpu_backend = async (
 ) => {
   const api = await import("vgpu");
   if (!is_alive()) return null;
+
   const gpu = await api.init({ label: "folly-vision-banner" });
   if (!is_alive()) {
     gpu.dispose();
     return null;
   }
+
   let surface = null;
   let draw = null;
   let sampler = null;
@@ -236,6 +237,7 @@ export const create_vgpu_backend = async (
 
   const release = () => {
     if (disposed) return;
+
     disposed = true;
     remove_error?.();
     remove_error = null;
@@ -292,6 +294,7 @@ export const create_vgpu_backend = async (
       depth: false,
       vertices: 6,
     });
+
     draw.set({
       params: {
         canvas_size: [1, 1],
@@ -304,6 +307,7 @@ export const create_vgpu_backend = async (
     });
     await draw.compile({ colors: [preferred_format()] });
     await gpu.settled();
+
     if (initialization_error) throw initialization_error;
     if (!is_alive()) {
       release();
@@ -317,6 +321,7 @@ export const create_vgpu_backend = async (
 
   const upload = async (image, width, height) => {
     if (disposed || !image || !width || !height) return;
+
     if (!texture || texture.size[0] !== width || texture.size[1] !== height) {
       texture?.dispose?.();
       texture = gpu.device.createTexture({
@@ -327,6 +332,7 @@ export const create_vgpu_backend = async (
       });
       draw.set({ image_texture: texture.view });
     }
+
     gpu.device.pushErrorScope("validation");
     let copy_error = null;
     try {
@@ -342,18 +348,23 @@ export const create_vgpu_backend = async (
     if (copy_error) throw copy_error;
     if (validation_error) throw validation_error;
   };
+
   const backend = {
     canvas,
     backend: "webgpu",
     resize(width, height, dpr = 1) {
       if (disposed) return;
+
       const physical_width = Math.max(1, Math.round(width * dpr));
       const physical_height = Math.max(1, Math.round(height * dpr));
       surface.resize([physical_width, physical_height]);
     },
+
     async prepare(captured) {
       if (disposed) return null;
+
       await upload(captured.image, captured.image_width, captured.image_height);
+
       const params = {
         canvas_size: [
           Math.max(1, captured.width),
@@ -368,11 +379,14 @@ export const create_vgpu_backend = async (
       };
       draw.set({ params, image_sampler: sampler });
       await gpu.settled();
+
       if (initialization_error) throw initialization_error;
+
       prepared = true;
       const handle = {
         async set_image(image, width, height) {
           if (disposed) return;
+
           await upload(image, width, height);
           params.image_size = [Math.max(1, width), Math.max(1, height)];
         },
@@ -390,14 +404,18 @@ export const create_vgpu_backend = async (
       handles.add(handle);
       return handle;
     },
+
     async render(entries, time_seconds) {
       if (disposed || !surface || !draw) return;
+
       for (const entry of entries ?? []) entry.handle?._set_time(time_seconds);
+
       api.frame(gpu, (current) => {
         current.pass(surface, (pass) => pass.draw(draw));
       });
       await gpu.settled();
     },
+
     dispose: release,
   };
   return backend;

@@ -309,20 +309,27 @@ export const create_vision_banner_effect = ({
     resize: ({ width, height }) => {
       canvas_size.value.set(width, height);
     },
+
     set_image: (next_image, width, height) => {
       if (disposed) return;
+
       image_texture.image = next_image;
       image_texture.needsUpdate = true;
       image_size.value.set(width || 1, height || 1);
     },
+
     render: ({ elapsed_seconds }) => {
       if (disposed) return;
+
       time.value = elapsed_seconds;
       renderer.render(scene, camera);
     },
+
     dispose: () => {
       if (disposed) return;
+
       disposed = true;
+
       scene.remove(mesh);
       image_texture.dispose();
       material.dispose();

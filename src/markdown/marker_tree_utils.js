@@ -30,6 +30,7 @@ const marker_candidate_from_child = (child_node) => {
   if (is_text_node(child_node)) {
     return { text: child_node.value, source_kind: "text" };
   }
+
   const paragraph_child = paragraph_only_child(child_node);
   if (is_text_node(paragraph_child)) {
     return { text: paragraph_child.value, source_kind: "paragraph" };
@@ -59,6 +60,7 @@ const append_wrapped_children = (
   for (let index = start_index + 1; index < close_index; index += 1) {
     output.push(children[index]);
   }
+
   output.push({ type: "html", value: closing_html });
 };
 

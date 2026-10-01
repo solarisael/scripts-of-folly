@@ -24,12 +24,14 @@ const create_explanation_body = (slot_el, anchor_el) => {
 const apply_popup_profile = (popup_el, slot_el, anchor_el) => {
   const raw_profile = anchor_el.dataset.ixProfile;
   const profile = IX_PROFILES.includes(raw_profile) ? raw_profile : null;
+
   for (const known_profile of IX_PROFILES) {
     popup_el.classList.toggle(
       `${IX_BASE_CLASS}_popup_profile_${known_profile}`,
       profile === known_profile,
     );
   }
+
   if (profile === "explanation") {
     return create_explanation_body(slot_el, anchor_el);
   }
@@ -52,6 +54,7 @@ const populate_action_content = (content_target_el, descriptor, anchor_el) => {
     content_target_el.innerHTML = reveal_content(descriptor.payload);
     return;
   }
+
   if (descriptor.action === "fetch") {
     // HTMX owns click navigation on this anchor; popup fetch uses a separate slot.
     load_ix_fetch_content(
@@ -73,6 +76,7 @@ const populate_popup_door = (door_el, anchor_el, is_pinned) => {
   // A mobile peek needs a navigation door because the next tap unpins it.
   const door_href = popup_door_href(anchor_el);
   door_el.hidden = !(is_pinned && door_href);
+
   if (!door_el.hidden && door_href) {
     door_el.href = resolve_ix_url(door_href);
     door_el.textContent = anchor_el.dataset.ixDoorLabel || "\u2192 open";
@@ -82,6 +86,7 @@ const populate_popup_door = (door_el, anchor_el, is_pinned) => {
 const populate_popup = (popup_el, descriptor, anchor_el, is_pinned) => {
   const slot_el = popup_el.querySelector(`#${IX_POPUP_SLOT_ID}`);
   const door_el = popup_el.querySelector(`.${IX_BASE_CLASS}_popup_door`);
+
   if (
     !(slot_el instanceof HTMLElement) ||
     !(door_el instanceof HTMLAnchorElement)
@@ -90,6 +95,7 @@ const populate_popup = (popup_el, descriptor, anchor_el, is_pinned) => {
   }
 
   delete slot_el.dataset.ixFetchPending;
+
   const content_target_el = apply_popup_profile(popup_el, slot_el, anchor_el);
   populate_action_content(content_target_el, descriptor, anchor_el);
   populate_popup_door(door_el, anchor_el, is_pinned);

@@ -140,6 +140,7 @@ const bind_ix_node = (node_value) => {
 
     schedule_idle(() => ix_fetch_prefetch(prefetch_url, prefetch_select));
   }
+
   if (descriptor.trigger === "hover") {
     node_value.addEventListener("mouseenter", () =>
       show_popup_for(node_value, descriptor),

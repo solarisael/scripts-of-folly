@@ -4,6 +4,7 @@ import {
   normalize_text_fx_name,
   text_fx_is_text_effect,
 } from "../contract.js";
+
 const text_fx_effect_class_map = TEXT_FX_EFFECT_CLASS_MAP;
 const text_fx_stack_blacklist_pairs = TEXT_FX_STACK_BLACKLIST_PAIRS;
 

@@ -18,6 +18,7 @@ const hydrating_banners = new WeakSet();
 
 const matching_banners = (node) => {
   if (!node) return [];
+
   const matches = [];
   if (node.nodeType === 1 && node.matches?.(BANNER_SELECTOR))
     matches.push(node);
@@ -50,6 +51,7 @@ const hydrate_banner = (banner, backend = "auto") => {
     runtime: null,
     visual_ready: false,
   };
+
   const listener_cleanups = [];
   const is_alive = () => !state.disposed && banner.isConnected === true;
 
@@ -239,6 +241,7 @@ export const install_vision_banners = ({
     },
     dispose: () => {},
   };
+
   const cleanups = [];
   const observer = new MutationObserver((records) => {
     if (controller.disposed) return;
@@ -259,6 +262,7 @@ export const install_vision_banners = ({
   const handle_hydration = () => controller.refresh();
   const handle_swap = (event) =>
     hydrate_vision_banners(event?.detail?.target ?? root, backend);
+
   if (root.readyState === "loading")
     root.addEventListener("DOMContentLoaded", handle_hydration, { once: true });
   else handle_hydration();

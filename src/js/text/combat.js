@@ -27,6 +27,7 @@ const combat_segment_from_match = (token_match) => {
   }
 
   const segment = { type: "token", value: token_value, token_class };
+
   if (token_match[1]) {
     segment.bracketed = true;
   }

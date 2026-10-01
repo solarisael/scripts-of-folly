@@ -27,6 +27,7 @@ export const create_webgl_backend = async (
   let ready = false;
   let initialization_error = null;
   let remove_context_listener = null;
+
   try {
     renderer = new three.WebGPURenderer({
       canvas,
@@ -40,6 +41,7 @@ export const create_webgl_backend = async (
       dispose_renderer(renderer);
       return null;
     }
+
     const report_loss = (error) => {
       if (disposed || loss_reported) return;
       if (!ready) {
@@ -56,6 +58,7 @@ export const create_webgl_backend = async (
     const handles = new Set();
     const release = () => {
       if (disposed) return;
+
       disposed = true;
       remove_context_listener?.();
       remove_context_listener = null;
@@ -64,17 +67,21 @@ export const create_webgl_backend = async (
       dispose_renderer(renderer);
       renderer = null;
     };
+
     const backend = {
       canvas,
       backend: "webgl2",
       resize(width, height, dpr = 1) {
         if (disposed) return;
+
         renderer.setPixelRatio(dpr);
         renderer.setSize(Math.max(1, width), Math.max(1, height), false);
       },
+
       async prepare(captured) {
         if (disposed || !is_alive()) return null;
         if (initialization_error) throw initialization_error;
+
         const effect = create_vision_banner_effect({
           three,
           tsl,
@@ -84,6 +91,7 @@ export const create_webgl_backend = async (
           image_height: captured.image_height,
           inverted_bowl: captured.inverted_bowl,
         });
+
         if (initialization_error) {
           effect.dispose();
           throw initialization_error;
@@ -98,6 +106,7 @@ export const create_webgl_backend = async (
           },
           dispose() {
             if (!handles.delete(handle)) return;
+
             effect.dispose();
           },
           _render(time_seconds) {
@@ -108,10 +117,13 @@ export const create_webgl_backend = async (
         ready = true;
         return handle;
       },
+
       render(entries, time_seconds) {
         if (disposed) return;
+
         for (const entry of entries ?? []) entry.handle?._render(time_seconds);
       },
+
       dispose: release,
     };
     return backend;

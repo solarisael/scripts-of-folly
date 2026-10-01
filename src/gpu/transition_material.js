@@ -28,6 +28,7 @@ export function create_transition_material(texture, captured) {
     depthTest: false,
     toneMapped: false,
   });
+
   const transition = tsl.uniform(new THREE.Vector4(1, 0, 0, 0));
   const size = tsl.uniform(new THREE.Vector2(captured.width, captured.height));
   const source = tsl.texture(texture);
@@ -58,6 +59,7 @@ export function create_transition_material(texture, captured) {
           .If(transition.x.lessThan(1.5), () => {
             const grain = tsl.floor(pixel.div(3)).add(seed);
             const grain_noise = hash(grain);
+
             const drift = tsl
               .vec2(
                 hash(grain.add(tsl.vec2(7, 3)))
@@ -66,7 +68,9 @@ export function create_transition_material(texture, captured) {
                 grain_noise.add(0.3).mul(-24),
               )
               .mul(progress.mul(progress));
+
             const ink = sample(uv.sub(drift.div(size)));
+
             const remaining = tsl
               .float(1)
               .sub(
@@ -88,6 +92,7 @@ export function create_transition_material(texture, captured) {
             );
             const detail = noise(pixel.div(9).add(seed));
             const density = cloud.mul(0.7).add(detail.mul(0.3));
+
             const drift = tsl
               .vec2(
                 tsl
@@ -96,8 +101,10 @@ export function create_transition_material(texture, captured) {
                 cloud.mul(-8).sub(10),
               )
               .mul(progress);
+
             const coordinate = uv.sub(drift.div(size));
             const radius = tsl.vec2(progress.mul(6)).div(size);
+
             const ink = tsl.vec4(0).toVar();
 
             for (let y = -1; y <= 1; y += 1) {

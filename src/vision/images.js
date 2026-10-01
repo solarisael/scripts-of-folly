@@ -38,6 +38,7 @@ export const create_banner_images = (banner) => {
     candidate === dom_image
       ? image_source(candidate)
       : image_source(candidate) || image_source(dom_image);
+
   return { image, dom_image, source_nodes, get_loaded_image, get_image_source };
 };
 
@@ -48,6 +49,7 @@ export const listen_for_image = (
   listener_cleanups,
 ) => {
   if (!target) return;
+
   if (typeof target.addEventListener === "function") {
     target.addEventListener(event_name, callback);
     listener_cleanups.push(() =>

@@ -23,6 +23,7 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
       else item.fragment.style.removeProperty("opacity");
       item.handle?.dispose();
     }
+
     items = [];
   };
 
@@ -101,6 +102,7 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
       item.handle?.dispose();
       item.handle = null;
     }
+
     dispose_renderer(renderer);
     renderer = null;
     canvas?.remove();
@@ -168,6 +170,7 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
       if (phase === "in")
         fragment.style.setProperty("opacity", "0", "important");
     }
+
     if (!items.length) return true;
 
     if (!renderer) await prepare_renderer(backend);
@@ -199,6 +202,7 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
 
       const finish = (result, error) => {
         if (settled) return;
+
         settled = true;
         view.cancelAnimationFrame(frame);
         view.clearTimeout(timer);

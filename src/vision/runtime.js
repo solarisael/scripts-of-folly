@@ -129,6 +129,7 @@ export const create_gpu_effect_runtime = async ({
       next_renderer?.dispose?.();
       return null;
     }
+
     try {
       const next_size = current_size(next_renderer.canvas, dpr_cap);
       next_renderer.resize(next_size.width, next_size.height, next_size.dpr);
@@ -146,6 +147,7 @@ export const create_gpu_effect_runtime = async ({
         return null;
       }
       next_handle.resize(next_size.width, next_size.height);
+
       return { renderer: next_renderer, handle: next_handle };
     } catch (error_value) {
       const failed_backend = next_renderer.backend;
@@ -162,12 +164,14 @@ export const create_gpu_effect_runtime = async ({
 
   const rebuild_with_webgl = async (reason) => {
     if (rebuilding || state.disposed || !alive()) return;
+
     rebuilding = true;
     on_renderer_reset(reason);
     state.first_frame_rendered = false;
     state.last_frame_time = null;
     state.elapsed_ms = 0;
     state.needs_render = true;
+
     const old_renderer = renderer;
     const old_canvas = render_canvas;
     handle = null;
@@ -215,6 +219,7 @@ export const create_gpu_effect_runtime = async ({
 
   async function draw_frame(frame_time) {
     state.frame = null;
+
     if (!active()) {
       state.last_frame_time = null;
       return;
@@ -234,6 +239,7 @@ export const create_gpu_effect_runtime = async ({
     advance_frame_clock(state, frame_time);
     state.needs_render = false;
     state.rendering = true;
+
     try {
       const size = current_size(render_canvas, dpr_cap);
       if (
@@ -245,6 +251,7 @@ export const create_gpu_effect_runtime = async ({
         renderer.resize(size.width, size.height, size.dpr);
         handle.resize(size.width, size.height);
       }
+
       await renderer.render(
         [
           {
@@ -255,6 +262,7 @@ export const create_gpu_effect_runtime = async ({
         ],
         state.motion_reduced ? 0 : state.elapsed_ms / 1000,
       );
+
       if (!alive()) {
         dispose();
         return;
@@ -298,6 +306,7 @@ export const create_gpu_effect_runtime = async ({
       handle_resize,
     );
     observe_effect_visibility(owner, state, listener_cleanups, update_activity);
+
     const motion = globalThis.window?.matchMedia?.(reduced_motion_query);
     if (motion?.addEventListener) {
       const listener = () => {
@@ -318,10 +327,12 @@ export const create_gpu_effect_runtime = async ({
       motion.addListener(listener);
       listener_cleanups.push(() => motion.removeListener(listener));
     }
+
     state.size = current_size(render_canvas, dpr_cap);
     renderer.resize(state.size.width, state.size.height, state.size.dpr);
     handle.resize(state.size.width, state.size.height);
     request_frame();
+
     return {
       backend: renderer.backend,
       dispose,
@@ -330,6 +341,7 @@ export const create_gpu_effect_runtime = async ({
         current_image = next_image;
         current_image_width = next_width;
         current_image_height = next_height;
+
         const upload = handle?.set_image?.(next_image, next_width, next_height);
         upload?.catch?.((error_value) => handle_renderer_loss(error_value));
         invalidate();

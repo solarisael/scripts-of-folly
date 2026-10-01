@@ -9,6 +9,7 @@ import { hydrate_terminal_effects } from "../terminal/runtime.js";
 
 const hydrate_all = (root_node) => {
   hydrate_text_effects(root_node);
+
   hydrate_interactions(root_node);
   hydrate_terminal_effects(root_node);
 };
@@ -152,6 +153,7 @@ if (
   window_any.__text_fx_mutation_observer = text_fx_mutation_observer;
   window_any.__text_fx_mutation_observer_bound = true;
 }
+
 if (typeof window !== "undefined" && typeof document !== "undefined") {
   const pretext_key = Symbol.for("scripts-of-folly.pretext");
   globalThis[pretext_key] ??= install_pretext();

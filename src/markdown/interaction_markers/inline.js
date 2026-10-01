@@ -91,6 +91,7 @@ const is_close_marker_only = (raw_text) => {
 const split_ix_markers = (raw_text = "", options = {}) => {
   const warning_cache =
     options.warning_cache instanceof Set ? options.warning_cache : new Set();
+
   const result_nodes = [];
   let cursor = 0;
 

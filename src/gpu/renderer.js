@@ -1,6 +1,7 @@
 function fresh_canvas(previous_canvas) {
   const document_value = previous_canvas?.ownerDocument;
   if (!document_value) return null;
+
   const next_canvas = document_value.createElement("canvas");
   next_canvas.className = previous_canvas.className;
   next_canvas.ariaHidden = "true";
@@ -36,6 +37,7 @@ export async function create_renderer(
   ) {
     const backend_name = attempts[attempt_index];
     if (!current_canvas || !is_alive()) return null;
+
     let backend_state = null;
     try {
       const factory = await load_backend_factory(backend_name);
@@ -71,6 +73,7 @@ export async function create_renderer(
 
 export function dispose_renderer(renderer_state) {
   if (!renderer_state) return;
+
   try {
     renderer_state.dispose?.();
   } catch (error) {

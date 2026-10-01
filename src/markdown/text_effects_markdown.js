@@ -24,10 +24,12 @@ const parse_open_marker_only = (raw_text) => {
   if (typeof raw_text !== "string") {
     return null;
   }
+
   const match = raw_text.match(open_marker_only_regex);
   if (!match) {
     return null;
   }
+
   return parse_marker_effect_descriptor(match[1]);
 };
 
@@ -51,6 +53,7 @@ const marker_wrapper_tags = (descriptor, is_block_effect) => {
     });
     return { opening_html, closing_html: "</div>" };
   }
+
   const opening_html = build_text_fx_span_html(descriptor.effect_names, "", {
     visual_intensity: descriptor.visual_intensity,
     motion_intensity: descriptor.motion_intensity,
@@ -79,6 +82,7 @@ const wrap_sibling_marker = (
     options.warn,
     options.warning_cache,
   );
+
   const is_block_effect = is_block_descriptor(descriptor);
   if (is_block_effect && candidate.source_kind !== "paragraph") {
     output.push(children[index]);
@@ -91,6 +95,7 @@ const wrap_sibling_marker = (
     output.push(children[index]);
     return index;
   }
+
   const close_index = find_sibling_close_marker(
     children,
     index,
@@ -99,6 +104,7 @@ const wrap_sibling_marker = (
   if (close_index <= index) {
     return -1;
   }
+
   const { opening_html, closing_html } = marker_wrapper_tags(
     descriptor,
     is_block_effect,
@@ -106,6 +112,7 @@ const wrap_sibling_marker = (
   if (!opening_html) {
     return -1;
   }
+
   append_wrapped_children(
     output,
     children,
@@ -122,11 +129,13 @@ const append_inline_candidate = (output, child, candidate, options) => {
     output.push(child);
     return;
   }
+
   const transformed_nodes = split_text_fx_markers(candidate.text, options);
   if (transformed_nodes.length) {
     output.push(...transformed_nodes);
     return;
   }
+
   output.push(child);
 };
 
@@ -137,6 +146,7 @@ const transform_marker_child = (children, index, output, options) => {
     output.push(child);
     return index;
   }
+
   const descriptor = parse_open_marker_only(candidate.text);
   if (descriptor) {
     const close_index = wrap_sibling_marker(
@@ -151,6 +161,7 @@ const transform_marker_child = (children, index, output, options) => {
       return close_index;
     }
   }
+
   append_inline_candidate(output, child, candidate, options);
   return index;
 };
@@ -159,9 +170,11 @@ const transform_text_fx_markers_in_tree = (tree_node, options = {}) => {
   if (!tree_node || !Array.isArray(tree_node.children)) {
     return;
   }
+
   const warning_cache =
     options.warning_cache instanceof Set ? options.warning_cache : new Set();
   const marker_options = { warn: options.warn, warning_cache };
+
   const next_children = [];
   for (let index = 0; index < tree_node.children.length; index += 1) {
     index = transform_marker_child(
@@ -172,6 +185,7 @@ const transform_text_fx_markers_in_tree = (tree_node, options = {}) => {
     );
   }
   tree_node.children = next_children;
+
   for (const child of tree_node.children) {
     transform_text_fx_markers_in_tree(child, { ...options, warning_cache });
   }

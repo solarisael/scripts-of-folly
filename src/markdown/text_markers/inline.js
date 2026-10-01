@@ -49,12 +49,14 @@ const render_inline_marker = (
     close_marker.end_index,
   );
   const descriptor = parse_marker_effect_descriptor(open_marker.raw_descriptor);
+
   if (!descriptor) {
     return { type: "text", value: full_match };
   }
   if (!descriptor.effect_names.every(is_inline_stack_effect)) {
     return { type: "text", value: full_match };
   }
+
   emit_sanitization_warning(
     descriptor.warning_reasons,
     descriptor.raw_descriptor,
@@ -62,10 +64,12 @@ const render_inline_marker = (
     options.warn,
     options.warning_cache,
   );
+
   const inner_nodes = split_text_fx_markers(
     source_text.slice(open_marker.end_index, close_marker.index),
     { ...options, warning_cache: options.warning_cache },
   );
+
   const html_value = build_text_fx_span_html_from_nodes(
     descriptor,
     inner_nodes,
@@ -83,12 +87,14 @@ const split_text_fx_markers = (raw_text = "", options = {}) => {
       output_nodes.push({ type: "text", value: source_text.slice(cursor) });
       break;
     }
+
     if (cursor < open_marker.index) {
       output_nodes.push({
         type: "text",
         value: source_text.slice(cursor, open_marker.index),
       });
     }
+
     const close_marker = find_matching_text_fx_close_marker(
       source_text,
       open_marker.end_index,
@@ -100,6 +106,7 @@ const split_text_fx_markers = (raw_text = "", options = {}) => {
       });
       break;
     }
+
     output_nodes.push(
       render_inline_marker(source_text, open_marker, close_marker, options),
     );

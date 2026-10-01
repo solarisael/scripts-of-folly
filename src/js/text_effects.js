@@ -82,6 +82,7 @@ const apply_text_fx_classes = (node_value) => {
   const has_text_effect = effect_classes.some((class_name) =>
     class_name.startsWith(`${TEXT_FX_TEXT_BASE_CLASS}_`),
   );
+
   const has_block_effect = effect_classes.some((class_name) =>
     class_name.startsWith(`${TEXT_FX_BLOCK_BASE_CLASS}_`),
   );

@@ -12,6 +12,7 @@ export const owner_intersects_viewport = (owner) => {
   const rect = owner.getBoundingClientRect();
   const { width, height } = viewport_size();
   if (!width || !height) return true;
+
   const left = finite_origin(rect.left);
   const top = finite_origin(rect.top);
   const right = finite_edge(rect.right, left, rect.width);
@@ -30,6 +31,7 @@ export const observe_effect_visibility = (
       (entries) => {
         const owner_entry = entries.find((entry) => entry.target === owner);
         if (!owner_entry) return;
+
         state.owner_visible = owner_entry.isIntersecting === true;
         update_activity();
       },
@@ -60,6 +62,7 @@ export const observe_effect_size = (
     state.resize_observer = new globalThis.ResizeObserver(handle_resize);
     state.resize_observer.observe(owner ?? canvas);
   }
+
   if (typeof globalThis.window?.addEventListener === "function") {
     globalThis.window.addEventListener("resize", handle_resize, {
       passive: true,
@@ -74,6 +77,7 @@ export const disconnect_effect_observers = (state, listener_cleanups) => {
   state.intersection_observer?.disconnect();
   state.intersection_observer = null;
   state.resize_observer?.disconnect();
+
   state.resize_observer = null;
   for (const cleanup_listener of listener_cleanups.splice(0)) {
     try {
