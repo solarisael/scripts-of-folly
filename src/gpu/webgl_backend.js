@@ -13,12 +13,15 @@ function dispose_renderer(renderer) {
 export async function create_webgl_backend(canvas, options = {}) {
   const { is_alive = () => true, on_lost = () => {} } = options;
 
+  // Normal blending over the transparent clear leaves rgb * alpha in the
+  // framebuffer, so the canvas must composite it as premultiplied or every
+  // pale halo is multiplied by its alpha twice and vanishes on dark pages.
   const context = canvas.getContext("webgl2", {
     alpha: true,
     antialias: false,
     depth: false,
     stencil: false,
-    premultipliedAlpha: false,
+    premultipliedAlpha: true,
   });
   if (!context) throw new Error("WebGL2 is unavailable");
 
@@ -29,7 +32,7 @@ export async function create_webgl_backend(canvas, options = {}) {
     antialias: false,
     depth: false,
     stencil: false,
-    premultipliedAlpha: false,
+    premultipliedAlpha: true,
     forceWebGL: true,
   });
 

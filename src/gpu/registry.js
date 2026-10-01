@@ -20,6 +20,7 @@ const TEXT_EFFECTS = Object.freeze([
   "float",
   "shake",
   "glitch",
+  "drown",
 ]);
 
 const NATIVE_TEXT_EFFECTS = Object.freeze([

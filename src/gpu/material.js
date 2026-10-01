@@ -21,6 +21,7 @@ import { build_effect as build_float } from "./effects/float.js";
 import { build_effect as build_shake } from "./effects/shake.js";
 import { build_effect as build_glitch } from "./effects/glitch.js";
 import { build_effect as build_skill_popup } from "./effects/skill_popup.js";
+import { build_effect as build_drown } from "./effects/drown.js";
 
 const builders = Object.freeze({
   glow: build_glow,
@@ -43,6 +44,7 @@ const builders = Object.freeze({
   shake: build_shake,
   glitch: build_glitch,
   skill_popup: build_skill_popup,
+  drown: build_drown,
 });
 
 const motion_effects = new Set([
@@ -51,6 +53,7 @@ const motion_effects = new Set([
   "shake",
   "glitch",
   "sigil_pulse",
+  "drown",
 ]);
 
 const finite = (value, fallback) =>
@@ -159,11 +162,14 @@ export function create_effect_material(
       }
       const lower = tsl.floor(level);
       const upper = tsl.min(lower.add(1), BLUR_RADII.length - 1);
+      // CanvasTexture flips Y, so layer 0 (crisp, drawn at the canvas top) sits at the top of v.
       const layer = (index) =>
         soft_source.sample(
           tsl.vec2(
             coordinate.x,
-            coordinate.y.add(index).div(BLUR_RADII.length),
+            coordinate.y
+              .add(tsl.float(BLUR_RADII.length - 1).sub(index))
+              .div(BLUR_RADII.length),
           ),
         );
       ink = tsl.mix(layer(lower), layer(upper), tsl.fract(level));

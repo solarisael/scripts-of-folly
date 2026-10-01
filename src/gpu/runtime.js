@@ -23,6 +23,7 @@ const SOFT_EFFECTS = new Set([
   "sigil_pulse",
   "veil",
   "cadence_oracular",
+  "drown",
 ]);
 const DYNAMIC_ATTRIBUTES = new Set([
   "class",

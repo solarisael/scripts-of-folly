@@ -24,6 +24,7 @@ const TEXT_FX_TEXT_EFFECT_NAMES = Object.freeze([
   "float",
   "shake",
   "glitch",
+  "drown",
 ]);
 
 const TEXT_FX_BLOCK_EFFECT_NAMES = Object.freeze([
@@ -57,6 +58,7 @@ const TEXT_FX_INTENSITY_MAX = 5;
 // fixed palette (chroma, rainbow, glitch — the aberration hues ARE the effect).
 const TEXT_FX_COLOR_CAPABLE_EFFECT_NAMES = Object.freeze([
   "aura",
+  "drown",
   "glow",
   "gradient",
   "neon",

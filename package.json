@@ -4,7 +4,8 @@
   "type": "module",
   "repository": "https://github.com/solarisael/scripts-of-folly",
   "scripts": {
-    "build:terminal-shader": "bun scripts/build_terminal_shader.js"
+    "build:terminal-shader": "bun scripts/build_terminal_shader.js",
+    "check:text-shader": "bun scripts/check_text_shader.js"
   },
   "dependencies": {
     "three": "^0.185.1",

@@ -109,6 +109,18 @@
     var(--site_fx_motion_mult, 1) *
       var(--text_fx_glitch_speed, var(--text_fx_stack_speed))
   );
+  --text_fx_drown_strength: calc(
+    var(--site_fx_glow_mult, 1) *
+      var(--text_fx_drown_intensity, var(--text_fx_stack_intensity))
+  );
+  --text_fx_drown_motion_strength: calc(
+    var(--site_fx_motion_mult, 1) *
+      var(--text_fx_drown_motion, var(--text_fx_stack_motion))
+  );
+  --text_fx_drown_speed_strength: calc(
+    var(--site_fx_motion_mult, 1) *
+      var(--text_fx_drown_speed, var(--text_fx_stack_speed))
+  );
 
   position: relative;
   display: inline;
@@ -133,14 +145,28 @@
     var(--text_fx_flicker_animation, none),
     var(--text_fx_sigil_pulse_animation, none),
     var(--text_fx_wiggle_animation, none), var(--text_fx_float_animation, none),
-    var(--text_fx_shake_animation, none), var(--text_fx_glitch_animation, none);
+    var(--text_fx_shake_animation, none), var(--text_fx_glitch_animation, none),
+    var(--text_fx_drown_animation, none);
 }
 
 .sol__text_fx_wiggle,
 .sol__text_fx_float,
 .sol__text_fx_shake,
-.sol__text_fx_glitch {
+.sol__text_fx_glitch,
+.sol__text_fx_drown {
   display: inline-block;
+}
+
+/* CSS can only sink the words; the GPU adds the rings and the refraction. */
+.sol__text_fx_drown {
+  filter: blur(calc(0.03em * var(--text_fx_drown_strength)));
+  color: color-mix(
+    in oklch,
+    currentColor 78%,
+    var(--text_fx_drown_color, var(--text_fx_stack_color))
+  );
+  --text_fx_drown_animation: sol__text_fx_drown
+    calc(5.6s / var(--text_fx_drown_speed_strength)) ease-in-out infinite;
 }
 
 .sol__text_fx_glow {
@@ -184,26 +210,14 @@
 }
 
 .sol__text_fx_shadow {
-  --text_fx_shadow_shadow:
-    calc(0.075em * var(--text_fx_shadow_strength))
-      calc(0.09em * var(--text_fx_shadow_strength)) 0
-      color-mix(in oklch, black 86%, transparent),
-    calc(0.16em * var(--text_fx_shadow_strength))
-      calc(0.18em * var(--text_fx_shadow_strength))
-      calc(0.025em * var(--text_fx_shadow_strength))
-      color-mix(in oklch, black 64%, transparent),
-    calc(0.28em * var(--text_fx_shadow_strength))
-      calc(0.3em * var(--text_fx_shadow_strength))
-      calc(0.07em * var(--text_fx_shadow_strength))
-      color-mix(in oklch, black 38%, transparent),
-    0 0 calc(0.24em * var(--text_fx_shadow_strength))
-      color-mix(
-        in oklch,
-        var(--text_fx_shadow_color, var(--text_fx_stack_color)) 22%,
-        transparent
-      );
-
-  color: color-mix(in oklch, currentColor 86%, black);
+  --text_fx_shadow_shadow: calc(0.1em * var(--text_fx_shadow_strength))
+    calc(0.12em * var(--text_fx_shadow_strength))
+    calc(0.18em * var(--text_fx_shadow_strength))
+    color-mix(
+      in oklch,
+      var(--text_fx_shadow_color, var(--text_fx_stack_color)) 65%,
+      transparent
+    );
 }
 
 /* intentionally fixed red/blue aberration values — chromatic effect requires these specific hues */
@@ -376,6 +390,7 @@
   --text_fx_wiggle_animation: sol__text_fx_wiggle
     calc(1.3s / var(--text_fx_wiggle_speed_strength)) ease-in-out infinite;
 }
+
 .sol__text_fx_float {
   --text_fx_float_animation: sol__text_fx_float
     calc(2.8s / var(--text_fx_float_speed_strength)) ease-in-out infinite;
@@ -475,6 +490,23 @@
 
   50% {
     transform: translateY(calc(-0.4em * var(--text_fx_float_motion_strength)));
+  }
+}
+
+@keyframes sol__text_fx_drown {
+  0%,
+  100% {
+    transform: translateY(0) skewX(0deg);
+  }
+
+  33% {
+    transform: translateY(calc(0.04em * var(--text_fx_drown_motion_strength)))
+      skewX(calc(1.2deg * var(--text_fx_drown_motion_strength)));
+  }
+
+  66% {
+    transform: translateY(calc(-0.03em * var(--text_fx_drown_motion_strength)))
+      skewX(calc(-1deg * var(--text_fx_drown_motion_strength)));
   }
 }
 

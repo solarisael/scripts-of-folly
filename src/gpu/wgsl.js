@@ -1,5 +1,15 @@
 import { BLUR_RADII, WIDE_CAPTURE_PADDING } from "./blur_levels.js";
 import { TRANSITION_WGSL } from "./transition_wgsl.js";
+import { GLOW_WGSL } from "./effects/glow.wgsl.js";
+import { NEON_WGSL } from "./effects/neon.wgsl.js";
+import { SHADOW_WGSL } from "./effects/shadow.wgsl.js";
+import { AURA_WGSL } from "./effects/aura.wgsl.js";
+import { ETCH_WGSL } from "./effects/etch.wgsl.js";
+import { WHISPER_WGSL } from "./effects/whisper.wgsl.js";
+import { SIGIL_PULSE_WGSL } from "./effects/sigil_pulse.wgsl.js";
+import { VEIL_WGSL } from "./effects/veil.wgsl.js";
+import { CADENCE_ORACULAR_WGSL } from "./effects/cadence_oracular.wgsl.js";
+import { DROWN_WGSL } from "./effects/drown.wgsl.js";
 
 export const EFFECT_SLOTS = Object.freeze({
   glow: 0,
@@ -22,7 +32,10 @@ export const EFFECT_SLOTS = Object.freeze({
   glitch: 17,
   skill_popup: 18,
   rift: 19,
+  drown: 20,
 });
+
+export const EFFECT_SLOT_COUNT = Object.keys(EFFECT_SLOTS).length;
 
 /*
 The ink simplex functions below include code adapted from @vgpu/wgsl-std 0.4.1.
@@ -61,9 +74,9 @@ struct VertexOut {
 @group(0) @binding(2) var<uniform> clip: vec4f;
 @group(0) @binding(3) var<uniform> surface: vec4f;
 @group(0) @binding(4) var<uniform> base: vec4f;
-@group(0) @binding(5) var<uniform> settings: array<vec4f, 20>;
-@group(0) @binding(6) var<uniform> colors: array<vec4f, 20>;
-@group(0) @binding(7) var<uniform> order: array<vec4f, 20>;
+@group(0) @binding(5) var<uniform> settings: array<vec4f, ${EFFECT_SLOT_COUNT}>;
+@group(0) @binding(6) var<uniform> colors: array<vec4f, ${EFFECT_SLOT_COUNT}>;
+@group(0) @binding(7) var<uniform> order: array<vec4f, ${EFFECT_SLOT_COUNT}>;
 @group(0) @binding(8) var<uniform> order_count: vec4f;
 @group(0) @binding(9) var glyph: texture_2d<f32>;
 @group(0) @binding(10) var glyph_sampler: sampler;
@@ -72,7 +85,7 @@ struct VertexOut {
 
 fn ordered_slot(slot: u32) -> bool {
   let count = u32(order_count.x);
-  for (var index: u32 = 0u; index < 20u; index = index + 1u) {
+  for (var index: u32 = 0u; index < ${EFFECT_SLOT_COUNT}u; index = index + 1u) {
     if (index >= count) {
       break;
     }
@@ -230,6 +243,23 @@ fn css_to_uv(offset: vec2f) -> vec2f {
   return offset / max(surface.xy, vec2f(1.0));
 }
 
+// Shade hooks composite layers behind the glyph and may tint or fade the glyph itself.
+struct Ink {
+  behind: vec4f,
+  core_color: vec3f,
+  core_alpha: f32,
+}
+${GLOW_WGSL}
+${NEON_WGSL}
+${SHADOW_WGSL}
+${AURA_WGSL}
+${ETCH_WGSL}
+${WHISPER_WGSL}
+${SIGIL_PULSE_WGSL}
+${VEIL_WGSL}
+${CADENCE_ORACULAR_WGSL}
+${DROWN_WGSL}
+
 fn wiggle_motion(phase: f32) -> vec3f {
   let p = fract(phase);
   if (p < 0.25) {
@@ -336,7 +366,6 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   let time = frame.z;
   let dpr = max(frame.w, 1.0);
   var uv = input.uv;
-  var motion_scale = 1.0;
 
   if (effect_active(14u)) {
     let speed = max(settings[14].z, 0.001);
@@ -377,6 +406,10 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     uv.y -= pulse * settings[11].x * settings[11].y * 0.075 * max(surface.z, 1.0) / max(surface.y, 1.0);
   }
 
+  if (effect_active(20u)) {
+    uv = drown_motion(uv, time);
+  }
+
   if (input.css.x < clip.x || input.css.y < clip.y
       || input.css.x > clip.z || input.css.y > clip.w) {
     return vec4f(0.0);
@@ -386,19 +419,13 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     return transition_ink(uv);
   }
 
-  let base_mask = sample_mask(uv);
-  var core_mask = base_mask;
-  var output = vec4f(0.0);
+  var core_mask = sample_mask(uv);
+  var ink = Ink(vec4f(0.0), sample_rgba(uv).rgb, 1.0);
   var rift_pigment = 0.0;
   let px = vec2f(dpr / max(surface.x, 1.0), dpr / max(surface.y, 1.0));
 
   if (effect_active(2u)) {
-    let strength = settings[2].x * 1.55;
-    let shadow_offset = css_to_uv(vec2f(strength * surface.z * 0.16, strength * surface.z * 0.18));
-    output = over(output, vec3f(0.0), soft_mask(uv - shadow_offset, px * 2.0) * 0.86);
-    output = over(output, vec3f(0.0), soft_mask(uv - shadow_offset * 1.8, px * 2.0) * 0.64);
-    output = over(output, vec3f(0.0), soft_mask(uv - shadow_offset * 3.0, px * 2.0) * 0.38);
-    output = over(output, effect_color(2u), soft_mask(uv, px * 1.5) * 0.22);
+    ink = shadow_shade(uv, time, ink);
   }
 
   if (effect_active(19u)) {
@@ -438,49 +465,40 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
     let dark_scheme = smoothstep(0.45, 0.75, dot(base.rgb, vec3f(0.21, 0.72, 0.07)));
     let palette = menu_sdr(mix(shadow, radiance, dark_scheme));
     let color = select(palette, effect_color(19u), colors[19].a > 0.5);
-    output = over(output, color, pigment);
+    ink.behind = over(ink.behind, color, pigment);
   }
 
   if (effect_active(0u)) {
-    let strength = settings[0].x * 1.35;
-    let unit = css_to_uv(vec2f(surface.z, surface.z));
-    output = over(output, effect_color(0u), soft_mask(uv, unit * (0.72 * strength)) * 0.20);
-    output = over(output, effect_color(0u), soft_mask(uv, unit * (0.42 * strength)) * 0.36);
-    output = over(output, effect_color(0u), soft_mask(uv, unit * (0.22 * strength)) * 0.58);
+    ink = glow_shade(uv, time, ink);
   }
 
   if (effect_active(1u)) {
-    let strength = settings[1].x;
-    let unit = css_to_uv(vec2f(surface.z, surface.z));
-    output = over(output, base.rgb, soft_mask(uv, unit * (0.12 * strength)) * 0.72);
-    output = over(output, effect_color(1u), soft_mask(uv, unit * (0.24 * strength)) * 0.52);
-    output = over(output, effect_color(1u), soft_mask(uv, unit * (0.4 * strength)) * 0.36);
+    ink = neon_shade(uv, time, ink);
   }
 
   if (effect_active(3u)) {
     let strength = settings[3].x;
     let shift = css_to_uv(vec2f(strength * surface.z * 0.05, 0.0));
-    output = over(output, vec3f(1.0, 0.32, 0.52), sample_mask(uv - shift) * 0.66);
-    output = over(output, vec3f(0.31, 0.78, 1.0), sample_mask(uv + shift) * 0.66);
+    ink.behind = over(ink.behind, vec3f(1.0, 0.32, 0.52), sample_mask(uv - shift) * 0.66);
+    ink.behind = over(ink.behind, vec3f(0.31, 0.78, 1.0), sample_mask(uv + shift) * 0.66);
   }
 
-  var core_color = sample_rgba(uv).rgb;
   if (effect_active(19u)) {
     let dark_scheme = smoothstep(0.45, 0.75, dot(base.rgb, vec3f(0.21, 0.72, 0.07)));
-    core_color = select(core_color,
+    ink.core_color = select(ink.core_color,
       mix(vec3f(1.0, 0.98, 0.91), vec3f(0.002, 0.0025, 0.003), dark_scheme),
       rift_pigment >= 0.5);
   }
   if (effect_active(7u)) {
     let gradient = mix(base.rgb, effect_color(7u), clamp(settings[7].x, 0.0, 1.0));
     let white = vec3f(1.0);
-    core_color = mix(mix(base.rgb, white, 0.14), gradient, uv.x);
+    ink.core_color = mix(mix(base.rgb, white, 0.14), gradient, uv.x);
   }
 
   if (effect_active(6u)) {
     let phase = uv.x * 6.2831853;
     let rainbow = 0.5 + 0.5 * cos(phase + vec3f(0.0, 2.094, 4.188));
-    core_color = mix(core_color, rainbow, clamp(settings[6].x, 0.0, 1.0));
+    ink.core_color = mix(ink.core_color, rainbow, clamp(settings[6].x, 0.0, 1.0));
   }
 
   if (effect_active(4u)) {
@@ -489,83 +507,48 @@ fn fs_main(input: VertexOut) -> @location(0) vec4f {
   }
 
   if (effect_active(8u)) {
-    let strength = settings[8].x;
-    let unit = css_to_uv(vec2f(surface.z, surface.z));
-    output = over(output, effect_color(8u), soft_mask(uv, unit * (0.44 * strength)) * 0.26);
-    output = over(output, effect_color(8u), soft_mask(uv, unit * (0.24 * strength)) * 0.42);
+    ink = aura_shade(uv, time, ink);
   }
 
   if (effect_active(9u)) {
-    let strength = settings[9].x * 1.35;
-    let highlight = sample_mask(uv - css_to_uv(vec2f(0.0, surface.z * 0.02)));
-    let shade = sample_mask(uv + css_to_uv(vec2f(0.0, surface.z * 0.045)));
-    let unit = css_to_uv(vec2f(surface.z, surface.z));
-    output = over(output, vec3f(1.0), highlight * 0.18);
-    output = over(output, base.rgb, soft_mask(uv, unit * (0.16 * strength)) * 0.38);
-    output = over(output, vec3f(0.0), shade * 0.62);
+    ink = etch_shade(uv, time, ink);
   }
 
   if (effect_active(10u)) {
-    let strength = settings[10].x * 1.45;
-    let unit = css_to_uv(vec2f(surface.z, surface.z));
-    output = over(output, effect_color(10u), soft_mask(uv, unit * (0.34 * strength)) * 0.16);
-    output = over(output, base.rgb, soft_mask(uv, unit * (0.18 * strength)) * 0.32);
-    motion_scale *= clamp(0.72 - 0.08 * strength, 0.1, 1.0);
+    ink = whisper_shade(uv, time, ink);
   }
 
   if (effect_active(11u)) {
-    let phase = fract(time * max(settings[11].z, 0.001) / 2.4);
-    let pulse = sin(phase * 3.14159265);
-    let strength = settings[11].x;
-    let unit = css_to_uv(vec2f(surface.z, surface.z));
-    output = over(output, effect_color(11u), soft_mask(uv, unit * (0.3 * strength)) * 0.24);
-    output = over(output, effect_color(11u), soft_mask(uv, unit * (0.16 * strength)) * 0.44);
-    output = over(output, effect_color(11u), base_mask * pulse * 0.05 * strength);
+    ink = sigil_pulse_shade(uv, time, ink);
   }
 
   if (effect_active(12u)) {
-    let strength = settings[12].x * 1.45;
-    let unit = css_to_uv(vec2f(surface.z, surface.z));
-    output = over(output, effect_color(12u), soft_mask(uv, unit * (0.52 * strength)) * 0.24);
-    output = over(output, effect_color(12u), soft_mask(uv, unit * (0.24 * strength)) * 0.44);
-    output = over(output, vec3f(1.0), soft_mask(uv, unit * (0.85 * strength)) * 0.14);
-    let center = 1.0 - smoothstep(0.0, 0.52, abs(uv.x - 0.48));
-    output = over(output, effect_color(12u), center * 0.08 * strength);
+    ink = veil_shade(uv, time, ink);
   }
 
   if (effect_active(13u)) {
-    let oracle = 0.5 + 0.5 * sin(uv.x * 14.0);
-    let unit = css_to_uv(vec2f(surface.z, surface.z));
-    output = over(output, effect_color(13u), soft_mask(uv, unit * 0.32) * 0.24);
-    output = over(output, effect_color(13u), base_mask * oracle * 0.24 * settings[13].x);
+    ink = cadence_oracular_shade(uv, time, ink);
+  }
+
+  if (effect_active(20u)) {
+    ink = drown_shade(uv, time, ink);
   }
 
   if (effect_active(17u)) {
     let strength = settings[17].x;
     let shift = css_to_uv(vec2f(strength * surface.z * 0.04, 0.0));
-    output = over(output, vec3f(1.0, 0.32, 0.52), sample_mask(uv - shift) * 0.64);
-    output = over(output, vec3f(0.31, 0.78, 1.0), sample_mask(uv + shift) * 0.64);
+    ink.behind = over(ink.behind, vec3f(1.0, 0.32, 0.52), sample_mask(uv - shift) * 0.64);
+    ink.behind = over(ink.behind, vec3f(0.31, 0.78, 1.0), sample_mask(uv + shift) * 0.64);
   }
 
-  var core_alpha = core_mask * motion_scale;
+  var core_alpha = core_mask * ink.core_alpha;
 
   if (effect_active(5u)) {
     let speed = max(settings[5].z, 0.001);
     core_alpha *= flicker_alpha(time * speed / 1.8, settings[5].y * 1.25);
   }
 
-  if (effect_active(11u)) {
-    let phase = fract(time * max(settings[11].z, 0.001) / 2.4);
-    let pulse = sin(phase * 3.14159265);
-    core_alpha *= 1.0 - 0.08 * settings[11].y * (1.0 - pulse);
-  }
-
-  if (effect_active(12u)) {
-    core_alpha *= 1.0 - 0.16 * settings[12].x;
-    core_color = mix(core_color, vec3f(1.0), clamp(0.22 + 0.08 * settings[12].x * 1.45, 0.0, 1.0));
-  }
-
-  output = over(output, core_color, core_alpha);
+  var output = over(ink.behind, ink.core_color, core_alpha);
 
   if (surface.w > 0.5 && effect_active(18u)) {
     let edge = min(min(input.uv.x, 1.0 - input.uv.x), min(input.uv.y, 1.0 - input.uv.y));
