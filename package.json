@@ -8,12 +8,12 @@
     "check:text-shader": "bun scripts/check_text_shader.js"
   },
   "dependencies": {
-    "three": "^0.185.1",
-    "vgpu": "^0.4.1",
-    "@chenglou/pretext": "0.0.8"
+    "@chenglou/pretext": "0.0.9",
+    "three": "^0.186.0",
+    "vgpu": "^0.5.0"
   },
   "devDependencies": {
-    "@vgpu/wgsl-std": "^0.4.1"
+    "@vgpu/wgsl-std": "^0.5.0"
   },
   "exports": {
     ".": "./src/js/api.js",
