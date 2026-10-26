@@ -85,17 +85,16 @@ fn drown_shade(uv: vec2f, time: f32, ink: Ink) -> Ink {
   let em = drown_em(uv);
   let sink = drown_sink(time, motion, speed);
 
-  // With no authored color the accent is the ink itself, so the river brings its own.
+  // Uncolored water follows the page ink: black on light pages, white on dark pages.
   let accent = effect_color(drown_slot);
   let authored = smoothstep(0.02, 0.08, distance(accent, base.rgb));
-  let river = mix(vec3f(0.12, 0.33, 0.40), vec3f(0.55, 0.82, 0.88), dark_page);
+  let river = vec3f(dark_page);
   let water = mix(river, accent, authored);
-  // Warm light ink cancels a 0.35 teal to grey, so dark pages take a little more.
+  // Dark pages take a little more tint to keep the submerged ink visible.
   let steep = mix(0.3, 0.4, dark_page) * depth * (1.0 + 0.3 * sink);
   let tinted = mix(out.core_color, water, clamp(steep, 0.0, 0.8));
 
-  // The word seen through depth: a soft copy beneath the sharp one, bluer than the word
-  // and softest at the bottom of the sink.
+  // The word has a soft copy beneath the sharp one, softest at the bottom of the sink.
   let blur_em = (0.03 * intensity + 0.01) * (1.0 + 0.35 * sink);
   let haze = soft_mask(uv, css_to_uv(vec2f(blur_em * surface.z)));
   let deep = mix(out.core_color, water, clamp(steep * 1.6, 0.0, 0.9));
@@ -115,7 +114,7 @@ fn drown_shade(uv: vec2f, time: f32, ink: Ink) -> Ink {
     ink_simplex(vec3f(cell * 1.3 + vec2f(7.1 - flow * 0.5, 2.9 + flow * 0.3), flow * 1.2 + 4.0)),
   );
   let fleck = smoothstep(0.55, 0.85, light);
-  let caustic_color = vec3f(0.86, 0.97, 1.0);
+  let caustic_color = mix(river, vec3f(0.86, 0.97, 1.0), authored);
   let shimmer = fleck * sample_mask(uv) * mix(0.12, 0.3, dark_page) * min(intensity, 2.0) * (0.5 + 0.5 * min(motion, 1.5));
   out.behind = over(out.behind, caustic_color, shimmer);
   // Light ink barely moves toward pale light, so dark pages lift it harder; paper keeps ink as ink.

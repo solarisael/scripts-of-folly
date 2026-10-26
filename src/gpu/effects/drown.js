@@ -98,18 +98,18 @@ export function build_effect(context) {
   const sink = sink_of(tsl, time, motion, speed);
   const unit = font_size.div(size);
 
-  // With no authored color the accent is the ink itself, so the river brings its own.
+  // Uncolored water follows the page ink: black on light pages, white on dark pages.
   const authored = tsl.smoothstep(0.02, 0.08, tsl.distance(accent, base_color));
-  const river = tsl.mix(tsl.vec3(0.12, 0.33, 0.4), tsl.vec3(0.55, 0.82, 0.88), dark_page);
+  const river = tsl.vec3(dark_page);
   const water = tsl.mix(river, accent, authored);
-  // Warm light ink cancels a 0.35 teal to grey, so dark pages take a little more.
+  // Dark pages take a little more tint to keep the submerged ink visible.
   const steep = tsl.clamp(
     tsl.mix(0.3, 0.4, dark_page).mul(depth).mul(sink.mul(0.3).add(1)),
     0,
     0.8,
   );
   const tinted = tsl.mix(rgba.rgb, water, steep);
-  // Off-glyph texels carry no color, so the soft copy tints the text color itself, bluer than the word.
+  // Off-glyph texels carry no color, so the soft copy tints the text color itself.
   const deep = tsl.mix(base_color, water, tsl.clamp(steep.mul(1.6), 0, 0.9));
   // The word seen through depth: a soft copy beneath the sharp one, softest at the bottom of the sink.
   const blur_em = intensity.mul(0.03).add(0.01).mul(sink.mul(0.35).add(1));
@@ -135,7 +135,7 @@ export function build_effect(context) {
     ),
   );
   const fleck = tsl.smoothstep(0.55, 0.85, light);
-  const caustic_color = tsl.vec3(0.86, 0.97, 1);
+  const caustic_color = tsl.mix(river, tsl.vec3(0.86, 0.97, 1), authored);
   const shimmer = fleck
     .mul(sample(uv).a)
     .mul(tsl.mix(0.12, 0.3, dark_page))

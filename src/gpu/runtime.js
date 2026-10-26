@@ -48,10 +48,56 @@ function is_element(value) {
 function is_internal_node(value) {
   return (
     is_element(value) &&
-    (value.matches?.(".folly-gpu-canvas") ||
+    (value.matches?.(".folly-gpu-canvas, .folly-gpu-presenter") ||
       value.hasAttribute(CAPTURE_ATTRIBUTE) ||
       value.hasAttribute("data-folly-probe"))
   );
+}
+
+function create_presentation(target, width, height) {
+  const document_value = target.ownerDocument;
+  const view = document_value.defaultView;
+  const canvas = document_value.createElement("canvas");
+  const needs_position_marker = !target.hasAttribute("data-folly-positioned");
+  const needs_position = view.getComputedStyle(target).position === "static";
+  if (
+    needs_position &&
+    [...target.querySelectorAll("*")].some(
+      (descendant) => view.getComputedStyle(descendant).position === "absolute",
+    )
+  )
+    return null;
+  if (needs_position) target.setAttribute("data-folly-positioned", "");
+  canvas.className = "folly-gpu-presenter";
+  canvas.setAttribute("aria-hidden", "true");
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+  canvas.style.left = "50%";
+  canvas.style.top = "50%";
+  canvas.style.transform = "translate(-50%, -50%)";
+  target.append(canvas);
+  const context = canvas.getContext("2d");
+  if (!context) {
+    canvas.remove();
+    if (needs_position && needs_position_marker)
+      target.removeAttribute("data-folly-positioned");
+    return null;
+  }
+  return {
+    canvas,
+    context,
+    owns_position: needs_position && needs_position_marker,
+  };
+}
+
+function dispose_presentation(item) {
+  const presentation = item.presentation;
+  if (!presentation) return;
+  presentation.canvas.remove();
+  const { target } = item;
+  if (presentation.owns_position)
+    target.removeAttribute("data-folly-positioned");
+  item.presentation = null;
 }
 
 function element_is_in_root(element, root) {
@@ -75,15 +121,6 @@ function finite_rect(rect) {
     rect &&
     [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite)
   );
-}
-
-function border_radius_is_round(style) {
-  return [
-    style.borderTopLeftRadius,
-    style.borderTopRightRadius,
-    style.borderBottomRightRadius,
-    style.borderBottomLeftRadius,
-  ].some((value) => Number.parseFloat(value) > 0);
 }
 
 function clipping_overflow(style) {
@@ -129,13 +166,10 @@ function has_nested_effect_owner(element, query_root) {
 }
 
 function capture_representable(element) {
+  const unsupported =
+    "button,input,select,textarea,audio,video,canvas:not(.folly-gpu-presenter),svg,iframe,object,embed";
   return (
-    !element.matches?.(
-      "button,input,select,textarea,audio,video,canvas,svg,iframe,object,embed",
-    ) &&
-    !element.querySelector?.(
-      "button,input,select,textarea,audio,video,canvas,svg,iframe,object,embed",
-    )
+    !element.matches?.(unsupported) && !element.querySelector?.(unsupported)
   );
 }
 
@@ -244,8 +278,9 @@ export function install_gpu_effects({
   function restore_target(target) {
     target.removeAttribute(TEXT_READY_ATTRIBUTE);
     target.removeAttribute(PANEL_READY_ATTRIBUTE);
+    const presentation = items.get(target)?.presentation;
+    if (presentation) presentation.canvas.style.visibility = "hidden";
   }
-
   function restore_all_targets() {
     for (const target of items.keys()) restore_target(target);
   }
@@ -258,6 +293,7 @@ export function install_gpu_effects({
     dirty_targets.delete(target);
     resize_observer?.unobserve?.(target);
     restore_target(target);
+    dispose_presentation(item);
     try {
       item.handle?.dispose?.();
     } catch (error) {
@@ -341,40 +377,6 @@ export function install_gpu_effects({
     };
   }
 
-  function update_surface_size() {
-    if (!renderer_state) return;
-    const viewport = viewport_size();
-    const dpr = Math.min(1.5, Math.max(1, view.devicePixelRatio || 1));
-    if (canvas) {
-      // The GPU frame uses the full viewport, including any stable scrollbar gutter.
-      const width = `${viewport.width}px`;
-      const height = `${viewport.height}px`;
-      if (canvas.style.width !== width) canvas.style.width = width;
-      if (canvas.style.height !== height) canvas.style.height = height;
-    }
-    renderer_state.resize(viewport.width, viewport.height, dpr);
-  }
-
-  function rounded_corner_overlaps(rect, ancestor_rect, style) {
-    if (!border_radius_is_round(style)) return false;
-    const radius = Math.max(
-      Number.parseFloat(style.borderTopLeftRadius) || 0,
-      Number.parseFloat(style.borderTopRightRadius) || 0,
-      Number.parseFloat(style.borderBottomRightRadius) || 0,
-      Number.parseFloat(style.borderBottomLeftRadius) || 0,
-    );
-    return (
-      (rect.left < ancestor_rect.left + radius &&
-        rect.top < ancestor_rect.top + radius) ||
-      (rect.right > ancestor_rect.right - radius &&
-        rect.top < ancestor_rect.top + radius) ||
-      (rect.left < ancestor_rect.left + radius &&
-        rect.bottom > ancestor_rect.bottom - radius) ||
-      (rect.right > ancestor_rect.right - radius &&
-        rect.bottom > ancestor_rect.bottom - radius)
-    );
-  }
-
   function visible_clip(item) {
     if (document_value.visibilityState === "hidden") return null;
 
@@ -418,8 +420,6 @@ export function install_gpu_effects({
         return null;
       if (clipping_overflow(ancestor_style)) {
         const ancestor_rect = ancestor.getBoundingClientRect();
-        if (rounded_corner_overlaps(rect, ancestor_rect, ancestor_style))
-          return null;
         clip.left = Math.max(clip.left, ancestor_rect.left);
         clip.top = Math.max(clip.top, ancestor_rect.top);
         clip.right = Math.min(clip.right, ancestor_rect.right);
@@ -429,31 +429,19 @@ export function install_gpu_effects({
     }
     if (clip.right <= clip.left || clip.bottom <= clip.top) return null;
 
-    const center_x = (clip.left + clip.right) / 2;
-    const center_y = (clip.top + clip.bottom) / 2;
-    const hit = document_value.elementFromPoint?.(center_x, center_y);
-    if (hit && hit !== target && !target.contains(hit)) return null;
-
     return clip;
   }
 
   function item_entry(item) {
-    const target_rect = item.target.getBoundingClientRect();
-    const clip = visible_clip(item);
-    if (!clip) {
+    if (!visible_clip(item)) {
       restore_target(item.target);
       return null;
     }
     return {
       item,
       handle: item.handle,
-      rect: {
-        left: target_rect.left + (target_rect.width - item.width) / 2,
-        top: target_rect.top + (target_rect.height - item.height) / 2,
-        width: item.width,
-        height: item.height,
-      },
-      clip,
+      rect: { left: 0, top: 0, width: item.width, height: item.height },
+      clip: { left: 0, top: 0, right: item.width, bottom: item.height },
     };
   }
 
@@ -496,10 +484,42 @@ export function install_gpu_effects({
       previous_frame_time = frame_time;
 
       try {
-        await renderer_state.render(
-          entries.map(({ handle, rect, clip }) => ({ handle, rect, clip })),
-          animation_time,
+        // Each copy owns only its ink. DOM ancestors clip it when the page scrolls.
+        const dpr = Math.min(1.5, Math.max(1, view.devicePixelRatio || 1));
+        renderer_state.resize(
+          Math.ceil(Math.max(...entries.map(({ item }) => item.width))),
+          Math.ceil(Math.max(...entries.map(({ item }) => item.height))),
+          dpr,
         );
+        const source_canvas = renderer_state.canvas;
+        for (const entry of entries) {
+          const { item, handle, rect, clip } = entry;
+          await renderer_state.render([{ handle, rect, clip }], animation_time);
+          if (dead || !item.presentation) return;
+          const { canvas: presentation_canvas, context } = item.presentation;
+          const width = Math.max(1, Math.round(item.width * dpr));
+          const height = Math.max(1, Math.round(item.height * dpr));
+          if (
+            presentation_canvas.width !== width ||
+            presentation_canvas.height !== height
+          ) {
+            presentation_canvas.width = width;
+            presentation_canvas.height = height;
+          }
+          context.clearRect(0, 0, width, height);
+          context.drawImage(
+            source_canvas,
+            rect.left * dpr,
+            rect.top * dpr,
+            item.width * dpr,
+            item.height * dpr,
+            0,
+            0,
+            width,
+            height,
+          );
+          presentation_canvas.style.visibility = "visible";
+        }
         for (const { item } of entries) {
           item.target.setAttribute(
             item.kind === "panel"
@@ -599,7 +619,6 @@ export function install_gpu_effects({
       renderer_state = created;
       canvas = created.canvas || canvas;
       canvas.dataset.follyRenderer = created.backend;
-      update_surface_size();
 
       return renderer_state;
     })();
@@ -688,7 +707,13 @@ export function install_gpu_effects({
       handle,
       width: captured?.width ?? rect.width,
       height: captured?.height ?? rect.height,
+      presentation: null,
     };
+    item.presentation = create_presentation(target, item.width, item.height);
+    if (!item.presentation) {
+      handle.dispose?.();
+      return;
+    }
     items.set(target, item);
     resize_observer?.observe(target);
     dirty_targets.delete(target);
@@ -744,7 +769,6 @@ export function install_gpu_effects({
         await prepare_target(target, names, token);
     }
 
-    update_surface_size();
     render_dirty = true;
     schedule_draw();
   }
@@ -875,7 +899,6 @@ export function install_gpu_effects({
       "resize",
       () => {
         mark_all_dirty();
-        update_surface_size();
         schedule_refresh();
       },
       { passive: true },
