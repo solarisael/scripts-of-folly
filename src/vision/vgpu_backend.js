@@ -282,6 +282,7 @@ export const create_vgpu_backend = async (
       addressModeV: "clamp-to-edge",
     });
     texture = gpu.device.createTexture({
+      kind: "2d",
       size: [1, 1],
       format: "rgba8unorm-srgb",
       usage: ["copy_dst", "texture_binding", "render_attachment"],
@@ -325,6 +326,7 @@ export const create_vgpu_backend = async (
     if (!texture || texture.size[0] !== width || texture.size[1] !== height) {
       texture?.dispose?.();
       texture = gpu.device.createTexture({
+        kind: "2d",
         size: [width, height],
         format: "rgba8unorm-srgb",
         usage: ["copy_dst", "texture_binding", "render_attachment"],

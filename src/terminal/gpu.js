@@ -138,6 +138,7 @@ export const create_terminal_gpu = async (
     });
     entries.write(atlas.data);
     glyph_texture = gpu.device.createTexture({
+      kind: "2d",
       size: [atlas.width, atlas.height],
       format: "rgba8unorm",
       usage: ["texture_binding", "copy_dst"],

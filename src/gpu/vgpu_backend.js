@@ -255,6 +255,7 @@ export async function create_vgpu_backend(
     const [width, height] = [capture.width, capture.height];
     const [upload_width, upload_height] = [texture_width, texture_height];
     const texture = gpu.device.createTexture({
+      kind: "2d",
       label: "folly-vgpu.capture",
       size: [upload_width, upload_height],
       format: "rgba8unorm",
@@ -262,6 +263,7 @@ export async function create_vgpu_backend(
     });
     const soft_texture = captured.soft_canvas
       ? gpu.device.createTexture({
+          kind: "2d",
           label: "folly-vgpu.soft-capture",
           size: [upload_width, captured.soft_canvas.height],
           format: "rgba8unorm",
