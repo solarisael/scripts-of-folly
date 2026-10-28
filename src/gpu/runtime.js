@@ -810,6 +810,12 @@ export function install_gpu_effects({
         if (queued_again && !dead) {
           queued_again = false;
           schedule_refresh();
+        } else if (!dead) {
+          // Every dirty target is prepared (or restored after a failure). A
+          // host page can show its text effects now.
+          document_value.dispatchEvent(
+            new view.CustomEvent("folly:gpu-settled"),
+          );
         }
       }
     });

@@ -34,7 +34,8 @@
     "./vision": "./src/vision/banner.js",
     "./vision/styles.css": "./src/vision/styles.css",
     "./pretext": "./src/pretext/index.js",
-    "./transitions": "./src/pretext/transitions.js",
+    "./transitions": "./src/transitions/index.js",
+    "./pretext/transitions": "./src/pretext/transitions.js",
     "./pretext/styles.css": "./src/pretext/styles.css"
   },
   "files": [

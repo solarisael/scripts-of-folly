@@ -11,9 +11,27 @@ struct Params {
 @group(0) @binding(0) var<uniform> params: Params;
 @group(0) @binding(1) var image_texture: texture_2d<f32>;
 @group(0) @binding(2) var image_sampler: sampler;
-fn hash31(point: vec3f) -> f32 {
-  let value = sin(dot(point, vec3f(127.1, 311.7, 74.7))) * 43758.5453;
-  return fract(value);
+
+// noise3 hashes integer lattice cells. An integer hash gives both legs the
+// same value; fract(sin(x) * 43758) diverges between shader compilers.
+// pcg3d is adapted from @vgpu/wgsl-std 0.5 (src/hash).
+// MIT License, Copyright (c) 2025 Vercel, Inc.
+fn pcg3d(value: vec3u) -> vec3u {
+  var hashed = value * 1664525u + 1013904223u;
+  hashed.x = hashed.x + hashed.y * hashed.z;
+  hashed.y = hashed.y + hashed.z * hashed.x;
+  hashed.z = hashed.z + hashed.x * hashed.y;
+  hashed = hashed ^ (hashed >> vec3u(16u));
+  hashed.x = hashed.x + hashed.y * hashed.z;
+  hashed.y = hashed.y + hashed.z * hashed.x;
+  hashed.z = hashed.z + hashed.x * hashed.y;
+  hashed = hashed ^ (hashed >> vec3u(16u));
+  return hashed;
+}
+
+fn hash31(cell: vec3f) -> f32 {
+  let hashed = pcg3d(bitcast<vec3u>(vec3i(cell)));
+  return f32(hashed.x >> 8u) * (1.0 / 16777216.0);
 }
 
 fn noise3(point: vec3f) -> f32 {

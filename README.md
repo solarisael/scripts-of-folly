@@ -32,3 +32,37 @@ Import it from `scripts-of-folly/webgl2`.
 Pair each WGSL source with its GLSL through `shader_module()`.
 A host page can pass `open_gpu(kind)` to `install_gpu_effects()`.
 Then the text effects open their GPU through the page's own backend selection.
+
+The text effect CSS sets layout and fonts only.
+The GPU draws all colour, glow, shadow, and motion.
+Without a GPU, the text shows as plain text.
+The runtime sends `folly:gpu-settled` on the document when all the effects are prepared.
+A host page can show its text effects after this event.
+
+## Page transitions
+
+Import page transitions from `scripts-of-folly/transitions`.
+A transition closes a cover over the page, changes the page, and opens the cover again.
+
+```js
+const transition = create_page_transition({ open_gpu, mode: () => "shader" });
+await transition.run(() => apply_new_state());
+bind_htmx_navigation(htmx, transition, { target: "#page", ready });
+```
+
+The mode can be `shader`, `fade`, or `off`.
+The `shader` mode draws the cover with one WGSL shader on WebGPU or on the WebGL2 leg.
+When both fail, the transition uses `fade` for the rest of the page.
+Reduced motion always uses `off`.
+The cover uses the page background as its paper and the page text colour as its ink.
+
+`bind_htmx_navigation()` starts the cover when a request for the target starts.
+It sets the htmx swap delay, so the swap occurs when the cover is closed.
+It opens the cover after the swap and after `ready()` resolves.
+A failed request, or a response without a swap, opens the cover on the old page.
+Preload requests do not start a cover.
+
+`warm()` compiles the cover shader before the first transition.
+The cover sends `folly:transition-covered` and `folly:transition-revealed` on the document.
+
+The Pretext sentence transitions are at `scripts-of-folly/pretext/transitions`.
