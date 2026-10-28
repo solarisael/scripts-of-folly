@@ -56,11 +56,12 @@ When both fail, the transition uses `fade` for the rest of the page.
 Reduced motion always uses `off`.
 The cover uses the page background as its paper and the page text colour as its ink.
 
-`bind_htmx_navigation()` starts the cover when a request for the target starts.
-It sets the htmx swap delay, so the swap occurs when the cover is closed.
+`bind_htmx_navigation()` holds each request for the target at `htmx:confirm`.
+It closes the cover, and then it sends the request.
+Thus the swap occurs under a closed cover, also on a slow GPU.
 It opens the cover after the swap and after `ready()` resolves.
 A failed request, or a response without a swap, opens the cover on the old page.
-Preload requests do not start a cover.
+Preload requests and requests with an `hx-confirm` question do not start a cover.
 
 `warm()` compiles the cover shader before the first transition.
 The cover sends `folly:transition-covered` and `folly:transition-revealed` on the document.

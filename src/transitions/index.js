@@ -16,9 +16,6 @@ export { COVER_EFFECTS };
 export const TRANSITION_MODES = Object.freeze(["shader", "fade", "off"]);
 
 const COVER_CLASS = "folly-transition-cover";
-// The last cover frame reaches the screen after its animation time ends: one
-// more animation frame, then the GPU work. A swap waits this much longer.
-const PRESENT_MARGIN_MS = 50;
 const HTMX_BOUND = Symbol.for("scripts-of-folly.transitions.htmx");
 
 const ease_in = (value) => value * value * value;
@@ -320,15 +317,6 @@ export function create_page_transition({
         await start("reveal", options);
       }
     },
-    // Milliseconds until a running cover shows full coverage on screen; 0
-    // when no cover is running.
-    remaining_ms() {
-      if (!current || current.phase !== "cover") return 0;
-      const elapsed = view.performance.now() - current.started;
-      return (
-        Math.max(0, Math.ceil(current.duration - elapsed)) + PRESENT_MARGIN_MS
-      );
-    },
     get mode() {
       return resolved_mode();
     },
@@ -389,10 +377,11 @@ const origin_of = (element, view) => {
   ];
 };
 
-// Plays the transition on every htmx navigation that swaps `target`. The cover
-// starts with the request, and the swap waits until the page is covered. The
-// reveal starts after the new content swaps in and `ready()` resolves. A failed
-// request, or a response that swaps nothing, reveals the old page again.
+// Plays the transition on every htmx navigation that swaps `target`. The
+// binding holds the request (htmx:confirm) until the cover is closed, so the
+// swap always occurs under a closed cover, also on a slow GPU. The cover opens
+// after the new content swaps in and `ready()` resolves. A failed request, or
+// a response that swaps nothing, opens the cover on the old page.
 export function bind_htmx_navigation(
   htmx,
   transition,
@@ -434,17 +423,25 @@ export function bind_htmx_navigation(
   };
 
   const listeners = {
-    "htmx:beforeRequest"(event) {
+    "htmx:confirm"(event) {
       const detail = event.detail;
-      if (detail?.requestConfig?.headers?.["HX-Preloaded"] === "true") return;
+      if (detail?.etc?.headers?.["HX-Preloaded"] === "true") return;
+      // htmx asks an hx-confirm question after this event; holding the
+      // request would skip it.
+      if (detail?.question) return;
       if (!ours(detail)) return;
 
+      event.preventDefault();
       if (pending) view.clearTimeout(pending.timer);
-      pending = {
+      const navigation = {
         swapping: false,
         timer: view.setTimeout(() => finish(false), max_wait_ms),
       };
-      transition.cover({ origin: origin_of(detail.elt, view) });
+      pending = navigation;
+      // Only the latest navigation sends its request.
+      transition.cover({ origin: origin_of(detail.elt, view) }).then(() => {
+        if (pending === navigation) detail.issueRequest(true);
+      });
     },
     "htmx:beforeSwap"(event) {
       const detail = event.detail;
@@ -453,7 +450,7 @@ export function bind_htmx_navigation(
       const spec =
         detail.swapOverride ??
         inherited_swap(htmx, detail.requestConfig?.elt ?? detail.elt);
-      detail.swapOverride = with_swap_delay(spec, transition.remaining_ms());
+      detail.swapOverride = with_swap_delay(spec, 0);
       pending.swapping = true;
     },
     "htmx:afterRequest"(event) {
