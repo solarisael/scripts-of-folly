@@ -100,8 +100,15 @@ fn effect_active(slot: u32) -> bool {
   return ordered_slot(slot) && settings[slot].x > 0.0;
 }
 
+// A value in [0, 1) for a point. The point is rounded to 1/64 and hashed as
+// integers, so WebGPU and the WebGL2 leg give the same value. The old
+// fract(sin(dot(p, k)) * 43758.5) form diverged: at p = an effect size the dot
+// is ~84 000, one fp32 rounding step apart between shader compilers, and the
+// sin amplifies that into a different phase.
 fn hash21(point: vec2f) -> f32 {
-  return fract(sin(dot(point, vec2f(127.1, 311.7))) * 43758.5453);
+  let cell = vec2i(floor(point * 64.0 + vec2f(0.5)));
+  let hashed = ink_pcg3(vec3u(bitcast<vec2u>(cell), 2654435769u));
+  return f32(hashed.x >> 8u) * (1.0 / 16777216.0);
 }
 
 // Keep the plume field on the menu's @vgpu/wgsl-std 0.4.1 simplex lattice.
