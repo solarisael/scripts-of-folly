@@ -58,12 +58,20 @@ The cover uses the page background as its paper and the page text colour as its 
 
 `bind_htmx_navigation()` holds each request for the target at `htmx:confirm`.
 It closes the cover, and then it sends the request.
-Thus the swap occurs under a closed cover, also on a slow GPU.
+Thus the swap occurs under a closed cover.
+The request never waits longer than `max_hold_ms` (2 seconds) for the cover.
+Then `close_now()` closes the cover at once on the fade sheet, and the request goes out.
 It opens the cover after the swap and after `ready()` resolves.
 A failed request, or a response without a swap, opens the cover on the old page.
 Preload requests and requests with an `hx-confirm` question do not start a cover.
 
-`warm()` compiles the cover shader before the first transition.
+A transition never waits for the shader to compile.
+Until the shader is open, transitions use the fade cover, and the shader opens in the background.
+`warm()` opens the shader before the first transition.
+The covered event tells which cover played: `detail.mode` is `shader` or `fade`.
+The cover uses the colours of `document.body` by default.
+Pass `colors: () => colors_of(element)` to use the element that holds the reading text.
+The shader cover renders at half the CSS size, because it is soft noise.
 The cover sends `folly:transition-covered` and `folly:transition-revealed` on the document.
 
 The Pretext sentence transitions are at `scripts-of-folly/pretext/transitions`.

@@ -16,6 +16,9 @@ export { COVER_EFFECTS };
 export const TRANSITION_MODES = Object.freeze(["shader", "fade", "off"]);
 
 const COVER_CLASS = "folly-transition-cover";
+// The cover is soft noise, so it renders at half the CSS size and the canvas
+// scales it up. This is a quarter of the GPU work of a full-size cover.
+const RENDER_SCALE = 0.5;
 const HTMX_BOUND = Symbol.for("scripts-of-folly.transitions.htmx");
 
 const ease_in = (value) => value * value * value;
@@ -37,15 +40,19 @@ const read_rgb = (document_value, css_color) => {
   return [red / 255, green / 255, blue / 255, 1];
 };
 
-// The paper is the page background; the ink is the page text colour.
-const page_colors = (document_value) => {
-  const body = document_value.body ?? document_value.documentElement;
-  const style = document_value.defaultView.getComputedStyle(body);
+// The cover's paper and ink: the background and text colour of `element`.
+// Pass the element that holds the reading text when the body colours differ.
+export const colors_of = (element) => {
+  const document_value = element.ownerDocument;
+  const style = document_value.defaultView.getComputedStyle(element);
   return {
     paper: read_rgb(document_value, style.backgroundColor),
     ink: read_rgb(document_value, style.color),
   };
 };
+
+const page_colors = (document_value) =>
+  colors_of(document_value.body ?? document_value.documentElement);
 
 const fresh_canvas = (canvas) => {
   const replacement = canvas.cloneNode(false);
@@ -66,14 +73,19 @@ export function create_page_transition({
   const view = document_value.defaultView;
   const motion = view.matchMedia?.("(prefers-reduced-motion: reduce)");
 
-  let element = null;
+  // Two cover surfaces. The canvas belongs to the shader backend and opens in
+  // the background. The sheet is a plain element for the fade mode.
+  let canvas = null;
+  let sheet = null;
+  // The kind of the cover on screen ("shader" or "fade"), or null.
+  let on_screen = null;
   let backend = null;
   let opening = null;
   let shader_failed = false;
   let disposed = false;
 
-  // One running animation at a time: { phase, started, duration, progress,
-  // origin, seed, palette, resolve }.
+  // One running animation at a time: { phase, mode, started, duration,
+  // progress, origin, seed, palette, resolve }.
   let current = null;
   let frame_request = 0;
   let drawing = false;
@@ -89,8 +101,9 @@ export function create_page_transition({
   const emit = (name, detail) =>
     document_value.dispatchEvent(new view.CustomEvent(name, { detail }));
 
-  const place = (node) => {
+  const place = (node, kind) => {
     node.className = COVER_CLASS;
+    node.dataset.follyTransition = kind;
     node.setAttribute("aria-hidden", "true");
     Object.assign(node.style, {
       position: "fixed",
@@ -101,35 +114,68 @@ export function create_page_transition({
       pointerEvents: "none",
       display: "none",
     });
+    document_value.body.append(node);
   };
 
-  const show = (node, kind) => {
-    if (element && element !== node) element.remove();
-    element = node;
-    element.dataset.follyTransition = kind;
-    if (!element.isConnected) document_value.body.append(element);
+  const hide_all = () => {
+    for (const node of [canvas, sheet]) if (node) node.style.display = "none";
+    on_screen = null;
+  };
+
+  const show = (kind) => {
+    const node = kind === "shader" ? canvas : sheet;
+    for (const other of [canvas, sheet]) {
+      if (other && other !== node) other.style.display = "none";
+    }
+    node.style.display = "block";
+    on_screen = kind;
+  };
+
+  const ensure_fade = () => {
+    if (!sheet) {
+      sheet = document_value.createElement("div");
+      place(sheet, "fade");
+      sheet.style.opacity = "0";
+    }
+    return sheet;
+  };
+
+  // The sheet's look for an animation step: paper at the coverage on screen.
+  const paint_sheet = ({ phase, progress, palette }) => {
+    const [red, green, blue] = palette.paper.map((value) => value * 255);
+    sheet.style.background = `rgb(${red}, ${green}, ${blue})`;
+    sheet.style.opacity = String(phase === "cover" ? progress : 1 - progress);
+  };
+
+  // Moves the running transition to the fade sheet, at its current progress.
+  const use_fade = () => {
+    if (!current) return;
+    ensure_fade();
+    current.mode = "fade";
+    paint_sheet(current);
+    show("fade");
   };
 
   const size_canvas = () => {
-    const width = Math.max(1, Math.round(view.innerWidth));
-    const height = Math.max(1, Math.round(view.innerHeight));
-    if (element.width !== width || element.height !== height) {
-      element.width = width;
-      element.height = height;
+    const width = Math.max(1, Math.round(view.innerWidth * RENDER_SCALE));
+    const height = Math.max(1, Math.round(view.innerHeight * RENDER_SCALE));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
     }
-    backend?.resize(width, height);
+    backend.resize(width, height);
     return [width, height];
   };
 
-  const open_backend = async (canvas, kind) => {
+  const open_backend = async (node, kind) => {
     const opened = await open_gpu(kind);
-    return create_cover_backend(canvas, opened, {
+    return create_cover_backend(node, opened, {
       is_alive: () => !disposed,
       on_lost: (reason) => {
         console.warn("[folly] transition cover lost its GPU device", reason);
         backend?.dispose();
         backend = null;
-        opening = null;
+        if (current?.mode === "shader") use_fade();
       },
     });
   };
@@ -141,29 +187,32 @@ export function create_page_transition({
     if (opening) return opening;
 
     opening = (async () => {
-      let canvas = document_value.createElement("canvas");
-      place(canvas);
-      show(canvas, "shader");
+      let node = document_value.createElement("canvas");
+      place(node, "shader");
       const errors = [];
       for (const kind of ["webgpu", "webgl2"]) {
         try {
-          const created = await open_backend(canvas, kind);
-          if (created) {
-            backend = created;
-            element.dataset.follyTransitionBackend = created.backend;
-            return backend;
+          const created = await open_backend(node, kind);
+          if (!created) {
+            node.remove();
+            return null;
           }
-          return null;
+          canvas?.remove();
+          canvas = node;
+          backend = created;
+          canvas.dataset.follyTransitionBackend = created.backend;
+          return backend;
         } catch (error) {
           errors.push(error);
-          if (disposed) return null;
-          canvas = fresh_canvas(canvas);
-          element = canvas;
+          if (disposed) {
+            node.remove();
+            return null;
+          }
+          node = fresh_canvas(node);
         }
       }
       shader_failed = true;
-      canvas.remove();
-      element = null;
+      node.remove();
       console.warn(
         "[folly] transition cover fell back to fade",
         new AggregateError(errors, "no GPU leg opened the cover shader"),
@@ -175,32 +224,26 @@ export function create_page_transition({
     return opening;
   };
 
-  const ensure_fade = () => {
-    if (element?.dataset.follyTransition === "fade") return element;
-
-    const sheet = document_value.createElement("div");
-    place(sheet);
-    show(sheet, "fade");
-    return sheet;
-  };
-
   const draw = async () => {
-    const { phase, progress, origin, seed, palette, started } = current;
-    if (element.dataset.follyTransition === "fade") {
-      const [red, green, blue] = palette.paper.map((value) => value * 255);
-      element.style.background = `rgb(${red}, ${green}, ${blue})`;
-      element.style.opacity = String(
-        phase === "cover" ? progress : 1 - progress,
-      );
+    const {
+      phase,
+      mode: kind,
+      progress,
+      origin,
+      seed,
+      palette,
+      started,
+    } = current;
+    if (kind === "fade") {
+      paint_sheet(current);
       return;
     }
     if (!backend) return;
 
-    const size = size_canvas();
     await backend.render({
       paper: palette.paper,
       ink: palette.ink,
-      size,
+      size: size_canvas(),
       origin,
       progress,
       phase: phase === "cover" ? 0 : 1,
@@ -213,7 +256,7 @@ export function create_page_transition({
   const settle = () => {
     const finished = current;
     current = null;
-    if (finished.phase === "reveal" && element) element.style.display = "none";
+    if (finished.phase === "reveal") hide_all();
     finished.resolve();
     emit(
       finished.phase === "cover"
@@ -233,7 +276,7 @@ export function create_page_transition({
     current.progress =
       current.phase === "cover" ? ease_in(linear) : ease_out(linear);
 
-    if (!drawing && element) {
+    if (!drawing) {
       drawing = true;
       const drawn = current;
       draw()
@@ -242,10 +285,7 @@ export function create_page_transition({
           backend?.dispose();
           backend = null;
           shader_failed = true;
-          if (current) {
-            ensure_fade().style.display = "block";
-            current.mode = "fade";
-          }
+          use_fade();
         })
         .finally(() => {
           drawing = false;
@@ -258,19 +298,35 @@ export function create_page_transition({
     }
   };
 
+  // The surface for a new animation. A transition keeps its surface from
+  // cover to reveal. A shader cover that is not open yet never delays a page
+  // change: this transition plays on the fade sheet, and the shader opens in
+  // the background for the next one.
+  const surface_for = (asked, previous) => {
+    const continuing = previous?.mode ?? on_screen;
+    if (continuing === "fade" || (continuing === "shader" && backend))
+      return continuing;
+    if (asked !== "shader") return asked;
+    if (backend) return "shader";
+    ensure_backend();
+    return "fade";
+  };
+
   const start = (phase, options = {}) => {
-    const chosen = resolved_mode();
+    const asked = resolved_mode();
     const previous = current;
     previous?.resolve();
 
     return new Promise((resolve) => {
-      if (chosen === "off" || disposed) {
+      if (asked === "off" || disposed) {
         current = null;
-        if (element) element.style.display = "none";
+        hide_all();
         resolve();
         return;
       }
 
+      const kind = surface_for(asked, previous);
+      if (kind === "fade") ensure_fade();
       // A cover that starts during a reveal (or the reverse) continues from
       // the coverage already on screen.
       const carried =
@@ -278,7 +334,7 @@ export function create_page_transition({
       const duration = phase === "cover" ? cover_ms : reveal_ms;
       current = {
         phase,
-        mode: chosen,
+        mode: kind,
         started: view.performance.now() - carried * duration,
         duration,
         progress: carried,
@@ -287,18 +343,9 @@ export function create_page_transition({
         palette: colors(),
         resolve,
       };
-
-      const prepared =
-        chosen === "shader" ? ensure_backend() : Promise.resolve(ensure_fade());
-      prepared.then(() => {
-        if (!current || disposed) return;
-        if (resolved_mode() === "fade") ensure_fade();
-        current.mode = element?.dataset.follyTransition ?? current.mode;
-        if (!element) return;
-
-        element.style.display = "block";
-        if (!frame_request) frame_request = view.requestAnimationFrame(tick);
-      });
+      if (kind === "fade") paint_sheet(current);
+      show(kind);
+      if (!frame_request) frame_request = view.requestAnimationFrame(tick);
     });
   };
 
@@ -317,20 +364,28 @@ export function create_page_transition({
         await start("reveal", options);
       }
     },
+    // Closes a running cover at once on the fade sheet, at full coverage.
+    // For a host that cannot wait longer for a slow GPU.
+    close_now() {
+      if (current?.phase !== "cover") return;
+
+      use_fade();
+      current.progress = 1;
+      paint_sheet(current);
+      settle();
+    },
     get mode() {
       return resolved_mode();
     },
-    // Opens the shader cover ahead of the first transition and draws one
-    // empty frame, so the first click does not wait on a shader compile.
+    // Opens the shader cover and draws one empty frame, so that the next
+    // transition can use the shader.
     async warm() {
       if (resolved_mode() !== "shader") return;
       if (!(await ensure_backend()) || current) return;
 
-      size_canvas();
-      const palette = colors();
       await backend.render({
-        ...palette,
-        size: [element.width, element.height],
+        ...colors(),
+        size: size_canvas(),
         origin: [0.5, 0.35],
         progress: 0,
         phase: 0,
@@ -346,8 +401,10 @@ export function create_page_transition({
       current = null;
       backend?.dispose();
       backend = null;
-      element?.remove();
-      element = null;
+      canvas?.remove();
+      sheet?.remove();
+      canvas = null;
+      sheet = null;
     },
   };
 }
@@ -379,15 +436,17 @@ const origin_of = (element, view) => {
 
 // Plays the transition on every htmx navigation that swaps `target`. The
 // binding holds the request (htmx:confirm) until the cover is closed, so the
-// swap always occurs under a closed cover, also on a slow GPU. The cover opens
-// after the new content swaps in and `ready()` resolves. A failed request, or
-// a response that swaps nothing, opens the cover on the old page.
+// swap always occurs under a closed cover. A page change never waits longer
+// than `max_hold_ms` for the cover: then the request goes out anyway. The
+// cover opens after the new content swaps in and `ready()` resolves. A failed
+// request, or a response that swaps nothing, opens the cover on the old page.
 export function bind_htmx_navigation(
   htmx,
   transition,
   {
     target,
     ready = () => Promise.resolve(),
+    max_hold_ms = 2000,
     max_wait_ms = 15000,
     document: document_value = globalThis.document,
   } = {},
@@ -402,7 +461,7 @@ export function bind_htmx_navigation(
     return Boolean(element?.matches?.(target));
   };
 
-  // { swapping, timer } for the navigation in flight.
+  // { swapping, hold, timer } for the navigation in flight.
   let pending = null;
 
   const finish = async (wait_for_ready) => {
@@ -410,6 +469,7 @@ export function bind_htmx_navigation(
     if (!finished) return;
 
     pending = null;
+    view.clearTimeout(finished.hold);
     view.clearTimeout(finished.timer);
     if (wait_for_ready) {
       try {
@@ -432,16 +492,27 @@ export function bind_htmx_navigation(
       if (!ours(detail)) return;
 
       event.preventDefault();
-      if (pending) view.clearTimeout(pending.timer);
-      const navigation = {
-        swapping: false,
-        timer: view.setTimeout(() => finish(false), max_wait_ms),
+      if (pending) {
+        view.clearTimeout(pending.hold);
+        view.clearTimeout(pending.timer);
+      }
+      const navigation = { swapping: false, sent: false };
+      // Only the latest navigation sends its request, and only once.
+      const send = () => {
+        if (pending !== navigation || navigation.sent) return;
+        navigation.sent = true;
+        view.clearTimeout(navigation.hold);
+        detail.issueRequest(true);
       };
+      // A GPU too slow to close the cover in time: snap it shut on the fade
+      // sheet, so the swap is still hidden, and send the request.
+      navigation.hold = view.setTimeout(() => {
+        transition.close_now?.();
+        send();
+      }, max_hold_ms);
+      navigation.timer = view.setTimeout(() => finish(false), max_wait_ms);
       pending = navigation;
-      // Only the latest navigation sends its request.
-      transition.cover({ origin: origin_of(detail.elt, view) }).then(() => {
-        if (pending === navigation) detail.issueRequest(true);
-      });
+      transition.cover({ origin: origin_of(detail.elt, view) }).then(send);
     },
     "htmx:beforeSwap"(event) {
       const detail = event.detail;
