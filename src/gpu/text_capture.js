@@ -73,15 +73,22 @@ function font_string(style) {
   );
 }
 
-function color(style) {
-  return style.webkitTextFillColor || style.color || "rgb(0, 0, 0)";
+function visible_color(style) {
+  const fill = style.webkitTextFillColor || style.color;
+  if (!fill || fill === "transparent") return null;
+  if (/rgba?\([^)]*,\s*0\s*\)$/u.test(fill)) return null;
+  return fill;
 }
 
-function ink_color(style) {
-  const fill = color(style);
-  return fill === "transparent" || /rgba?\([^)]*,\s*0\s*\)$/u.test(fill)
-    ? "rgba(255, 255, 255, 1)"
-    : fill;
+// Pretext copies the source colour into each fragment when it lays out. A host
+// that hides the source until the GPU is ready makes that copy transparent.
+// The nearest visible colour up the tree is the passage ink.
+function ink_color(node, view) {
+  for (let element = node; element; element = element.parentElement) {
+    const fill = visible_color(view.getComputedStyle(element));
+    if (fill) return fill;
+  }
+  return "rgba(255, 255, 255, 1)";
 }
 
 function display_text(value, style) {
@@ -119,7 +126,7 @@ function draw_pretext_fragments({ element, context, bounds, inset }) {
     const style = view.getComputedStyle(fragment);
     const text = display_text(raw_text, style);
     context.font = font_string(style);
-    context.fillStyle = ink_color(style);
+    context.fillStyle = ink_color(fragment, view);
     if ("letterSpacing" in context) {
       const letter_spacing = Number.parseFloat(style.letterSpacing);
       context.letterSpacing = Number.isFinite(letter_spacing)
@@ -141,12 +148,13 @@ function draw_pretext_fragments({ element, context, bounds, inset }) {
 
 function draw_native_text({ element, context, bounds, inset, doc, view }) {
   const nodes = text_nodes(element, view);
-  let first_style = null;
+  let first_owner = null;
   for (const node of nodes) {
-    const style = view.getComputedStyle(node.parentElement || element);
-    if (!first_style) first_style = style;
+    const owner = node.parentElement || element;
+    const style = view.getComputedStyle(owner);
+    if (!first_owner) first_owner = owner;
     context.font = font_string(style);
-    context.fillStyle = ink_color(style);
+    context.fillStyle = ink_color(owner, view);
     if ("letterSpacing" in context) {
       const letter_spacing = Number.parseFloat(style.letterSpacing);
       context.letterSpacing = Number.isFinite(letter_spacing)
@@ -171,7 +179,7 @@ function draw_native_text({ element, context, bounds, inset, doc, view }) {
       );
     }
   }
-  return first_style;
+  return first_owner;
 }
 
 /** Capture settled native text ink into a reusable transparent canvas. */
@@ -207,10 +215,11 @@ export function capture_text(
     context.scale(requestedDpr, requestedDpr);
     context.textBaseline = "alphabetic";
     const fragments = text_fragments(element);
-    const first_style = fragments.length
+    const first_owner = fragments.length
       ? (draw_pretext_fragments({ element, context, bounds, inset }),
-        view.getComputedStyle(fragments[0]))
+        fragments[0])
       : draw_native_text({ element, context, bounds, inset, doc, view });
+    const first_style = first_owner ? view.getComputedStyle(first_owner) : null;
     let soft_canvas = null;
     if (soft) {
       soft_canvas = doc.createElement("canvas");
@@ -250,7 +259,9 @@ export function capture_text(
         height: bounds.height,
       },
       font_size,
-      base_color: first_style ? color(first_style) : "rgba(255, 255, 255, 1)",
+      base_color: first_owner
+        ? ink_color(first_owner, view)
+        : "rgba(255, 255, 255, 1)",
     };
   } finally {
     if (hadReady) element.setAttribute(READY_ATTRIBUTE, readyValue);

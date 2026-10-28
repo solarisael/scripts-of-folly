@@ -3,6 +3,13 @@
    Loaded via css/index.css. Runtime counterpart: public/vendor/fx/js/. */
 
 .sol__text_fx_combat_feed {
+  --text_fx_combat_feed_strength: calc(
+    var(--site_fx_glow_mult, 1) *
+      var(
+        --text_fx_combat_feed_intensity,
+        var(--text_fx_marker_intensity, 1)
+      )
+  );
   --combat_feed_line_color: color-mix(
     in oklch,
     currentColor calc(74% + (8% * var(--text_fx_combat_feed_strength))),
@@ -12,28 +19,18 @@
   --combat_token_bracket_opacity: 0.74;
   --combat_token_bracket_tracking: -0.08em;
   --combat_token_bracket_weight: 640;
-  --text_fx_combat_feed_shadow: 0 0
-    calc(0.12em * var(--text_fx_combat_feed_strength))
+
+  font-family: var(--default-mono-font-family, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.05em;
+  color: var(--combat_feed_line_color);
+  text-shadow: 0 0 calc(0.12em * var(--text_fx_combat_feed_strength))
     color-mix(
       in oklch,
       var(--site_style_accent, currentColor)
         calc(36% * var(--text_fx_combat_feed_strength)),
       transparent
     );
-
-  font-family: var(--default-mono-font-family, ui-monospace, monospace);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.05em;
-  color: var(--combat_feed_line_color);
-}
-
-.sol__text_fx.sol__text_fx_combat_feed.sol__text_fx_gradient,
-.sol__text_fx.sol__text_fx_combat_feed.sol__text_fx_rainbow {
-  background: none;
-  background-clip: border-box;
-  color: var(--combat_feed_line_color);
-  -webkit-background-clip: border-box;
-  -webkit-text-fill-color: currentColor;
 }
 
 .sol__text_fx_combat_feed .sol__combat_token {
