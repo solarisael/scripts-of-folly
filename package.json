@@ -5,11 +5,12 @@
   "repository": "https://github.com/solarisael/scripts-of-folly",
   "scripts": {
     "build:terminal-shader": "bun scripts/build_terminal_shader.js",
-    "check:text-shader": "bun scripts/check_text_shader.js"
+    "check:text-shader": "bun scripts/check_text_shader.js",
+    "glsl:build": "bun scripts/build_glsl.js",
+    "glsl:check": "bun scripts/build_glsl.js --check"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.9",
-    "three": "^0.186.0",
     "vgpu": "^0.5.0"
   },
   "devDependencies": {
@@ -23,6 +24,8 @@
     "./text": "./src/js/text_effects.js",
     "./interactions": "./src/js/interactions.js",
     "./gpu": "./src/gpu/runtime.js",
+    "./webgl2": "./src/webgl2/index.js",
+    "./webgl2/shader-module": "./src/webgl2/shader_module.js",
     "./terminal": "./src/terminal/runtime.js",
     "./markdown": "./src/markdown/text_effects_markdown.js",
     "./remark": "./src/markdown/remark.js",

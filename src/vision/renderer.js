@@ -1,3 +1,6 @@
+import { create_vision_backend } from "./backend.js";
+import { open_gpu } from "../gpu/open_gpu.js";
+
 const fresh_canvas = (canvas) => {
   const replacement = canvas.cloneNode(false);
   canvas.replaceWith(replacement);
@@ -5,12 +8,10 @@ const fresh_canvas = (canvas) => {
 };
 
 const load_backend = async (backend_name, canvas, options) => {
-  if (backend_name === "webgl2") {
-    const { create_webgl_backend } = await import("./webgl_backend.js");
-    return create_webgl_backend(canvas, options);
-  }
-  const { create_vgpu_backend } = await import("./vgpu_backend.js");
-  return create_vgpu_backend(canvas, options);
+  const opened = await open_gpu(backend_name, {
+    label: "folly-vision-banner",
+  });
+  return create_vision_backend(canvas, opened, options);
 };
 
 export const create_renderer = async (

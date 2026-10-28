@@ -1,3 +1,8 @@
+import { create_gpu_backend } from "./backend.js";
+import { open_gpu } from "./open_gpu.js";
+
+export { open_gpu };
+
 function fresh_canvas(previous_canvas) {
   const document_value = previous_canvas?.ownerDocument;
   if (!document_value) return null;
@@ -11,20 +16,18 @@ function fresh_canvas(previous_canvas) {
   return next_canvas;
 }
 
-async function load_backend_factory(backend_name) {
-  if (backend_name === "webgpu") {
-    return import("./vgpu_backend.js");
-  }
-  return import("./webgl_backend.js");
-}
-
 function backend_attempts(requested_backend) {
   return requested_backend === "webgl2" ? ["webgl2"] : ["webgpu", "webgl2"];
 }
 
 export async function create_renderer(
   canvas,
-  { backend = "auto", is_alive = () => true, on_lost = () => {} } = {},
+  {
+    backend = "auto",
+    is_alive = () => true,
+    on_lost = () => {},
+    open = open_gpu,
+  } = {},
 ) {
   const errors = [];
   let current_canvas = canvas;
@@ -35,25 +38,17 @@ export async function create_renderer(
     attempt_index < attempts.length;
     attempt_index += 1
   ) {
-    const backend_name = attempts[attempt_index];
     if (!current_canvas || !is_alive()) return null;
 
     let backend_state = null;
     try {
-      const factory = await load_backend_factory(backend_name);
-      const create_backend =
-        backend_name === "webgpu"
-          ? factory.create_vgpu_backend
-          : factory.create_webgl_backend;
-      if (typeof create_backend !== "function") {
-        throw new Error(`Missing ${backend_name} backend factory`);
-      }
-      backend_state = await create_backend(current_canvas, {
+      const opened = await open(attempts[attempt_index]);
+      backend_state = await create_gpu_backend(current_canvas, opened, {
         is_alive,
         on_lost,
       });
-      if (!backend_state || backend_state.backend !== backend_name) {
-        throw new Error(`Invalid ${backend_name} backend state`);
+      if (backend_state && backend_state.backend !== opened.kind) {
+        throw new Error(`Invalid ${opened.kind} backend state`);
       }
       return backend_state;
     } catch (error) {

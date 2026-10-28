@@ -1,4 +1,11 @@
+// The text-effect backend. It runs on whichever gpu it gets: vgpu on WebGPU,
+// or the WebGL2 leg in ../webgl2/. Both legs run the same WGSL; the WebGL2 leg
+// reads its naga GLSL from ./glsl.generated.js.
 import { WGSL_SOURCE, EFFECT_SLOTS, EFFECT_SLOT_COUNT } from "./wgsl.js";
+import { FRAG, VERT } from "./glsl.generated.js";
+import { shader_module } from "../webgl2/shader_module.js";
+
+const SHADER = shader_module(WGSL_SOURCE, { frag: FRAG, vert: VERT });
 
 const EFFECT_COUNT = EFFECT_SLOT_COUNT;
 
@@ -154,24 +161,27 @@ async function copy_capture(gpu, texture, captured, width, height) {
   if (error) throw error;
 }
 
-export async function create_vgpu_backend(
+// `opened` is { kind, api, gpu } from renderer.js: the vgpu module or the
+// WebGL2 leg, and the gpu its init() returned.
+export async function create_gpu_backend(
   canvas,
+  opened,
   { is_alive = () => true, on_lost = () => {} } = {},
 ) {
+  const { kind: backend_kind, api, gpu } = opened;
   if (!canvas || typeof canvas.getContext !== "function") {
-    throw new Error("vgpu backend requires a canvas");
+    gpu.dispose();
+    throw new Error("GPU backend requires a canvas");
   }
-  if (!globalThis.navigator?.gpu) {
-    throw new Error("WebGPU is unavailable");
+  if (!is_alive()) {
+    gpu.dispose();
+    return null;
   }
-
-  const { init, surface, draw, frame, sampler } = await import("vgpu");
-  if (!is_alive()) return null;
-
-  const gpu = await init();
 
   const canvas_format =
-    navigator.gpu.getPreferredCanvasFormat?.() ?? "bgra8unorm";
+    backend_kind === "webgpu"
+      ? (navigator.gpu.getPreferredCanvasFormat?.() ?? "bgra8unorm")
+      : "rgba8unorm";
   let disposed = false;
   let loss_notified = false;
   const handles = new Set();
@@ -191,7 +201,7 @@ export async function create_vgpu_backend(
   };
 
   try {
-    canvas_surface = surface(gpu, canvas, {
+    canvas_surface = api.surface(gpu, canvas, {
       autoResize: false,
       size: current_size,
       dpr: 1,
@@ -275,7 +285,7 @@ export async function create_vgpu_backend(
     let packed;
     let drawable;
     try {
-      glyph_sampler = sampler(gpu, {
+      glyph_sampler = api.sampler(gpu, {
         minFilter: "linear",
         magFilter: "linear",
         mipmapFilter: "nearest",
@@ -292,9 +302,9 @@ export async function create_vgpu_backend(
         parameter_sets,
       );
 
-      drawable = draw(gpu, {
+      drawable = api.draw(gpu, {
         label: `folly-vgpu.${kind}`,
-        shader: WGSL_SOURCE,
+        shader: SHADER,
         vertices: 6,
         blend: "alpha",
         depth: false,
@@ -375,7 +385,7 @@ export async function create_vgpu_backend(
       height: current_size[1] / current_dpr,
       dpr: current_dpr,
     };
-    frame(gpu, (current_frame) => {
+    api.frame(gpu, (current_frame) => {
       current_frame.pass(
         { target: canvas_surface, clear: [0, 0, 0, 0] },
         (pass) => {
@@ -404,7 +414,7 @@ export async function create_vgpu_backend(
 
   return {
     canvas,
-    backend: "webgpu",
+    backend: backend_kind,
     gpu,
     resize,
     prepare,

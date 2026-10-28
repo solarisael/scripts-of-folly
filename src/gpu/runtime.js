@@ -196,9 +196,12 @@ function make_panel_capture(element) {
   };
 }
 
+// `open_gpu(kind)` lets a host page open the gpu through its own seam. It
+// returns { kind, api, gpu } like open_gpu in ./renderer.js, the default.
 export function install_gpu_effects({
   root = document,
   backend = "auto",
+  open_gpu = undefined,
 } = {}) {
   const document_value = root.nodeType === 9 ? root : root.ownerDocument;
   const view = document_value.defaultView || globalThis;
@@ -607,6 +610,7 @@ export function install_gpu_effects({
         backend: requested_backend,
         is_alive: () => is_alive(token),
         on_lost: (loss_error) => recover_from_loss(loss_error),
+        open: open_gpu,
       });
 
       if (!created || !is_alive(token)) {
