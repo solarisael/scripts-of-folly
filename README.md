@@ -39,6 +39,15 @@ Without a GPU, the text shows as plain text.
 The runtime sends `folly:gpu-settled` on the document when all the effects are prepared.
 A host page can show its text effects after this event.
 
+The text effects share half of each frame on the GPU.
+Each effect gets a part of that time in proportion to its share.
+An effect over its part steps down: a lower render scale, then a lower frame rate, then a still.
+The cost comes from GPU timestamps, so it needs WebGPU with the `timestamp-query` feature.
+Without timestamps, every effect stays at full quality.
+`install_gpu_effects()` returns `budget`.
+`budget.report()` gives the level, measured cost, and part of each visible effect.
+`budget.tune({ frame_share, shares })` changes the numbers while the page runs.
+
 ## Page transitions
 
 Import page transitions from `scripts-of-folly/transitions`.
