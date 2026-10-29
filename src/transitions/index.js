@@ -424,7 +424,6 @@ const origin_of = (element, view) => {
     clamp01((rect.top + rect.height / 2) / Math.max(1, view.innerHeight)),
   ];
 };
-
 // Plays the transition on every htmx navigation that swaps `target`. The
 // request goes out at once. When the response arrives, the binding asks
 // htmx to swap inside a view transition, and hands that view transition to
@@ -434,6 +433,16 @@ const origin_of = (element, view) => {
 // it. So at htmx:beforeTransition the binding puts a one-call
 // startViewTransition on the document, which removes itself and runs
 // `transition.run` with htmx's update.
+//
+// Back and forward: htmx restores `target` (its hx-history-elt) without a
+// transition. The binding turns the transition on for that swap. The ring
+// starts at the left edge for back and at the right edge for forward
+// (centre when the browser has no Navigation API). htmx fires
+// htmx:historyRestore right after it asks for the swap, before the view
+// transition runs it. The binding holds that event and sends it again
+// after the swap, so its listeners see the restored page.
+const RESTORE_EVENTS = ["htmx:historyRestore", "htmx:history-restore"];
+
 export function bind_htmx_navigation(
   htmx,
   transition,
@@ -447,8 +456,64 @@ export function bind_htmx_navigation(
   const ours = (detail) => Boolean(target_of(detail)?.matches?.(target));
   const preloaded = (detail) =>
     detail?.requestConfig?.headers?.["HX-Preloaded"] === "true";
+  const navigation = view?.navigation;
 
   let origin;
+  // The direction of the last back/forward step: -1 back, 1 forward.
+  let traverse = 0;
+  // A restore swap that waits in a view transition: { detail, done }.
+  let restore = null;
+
+  const on_entry_change = (event) => {
+    if (event.navigationType !== "traverse") return;
+    const from = event.from?.index ?? -1;
+    const to = navigation.currentEntry?.index ?? -1;
+    traverse = from < 0 || to < 0 ? 0 : Math.sign(to - from);
+  };
+  navigation?.addEventListener("currententrychange", on_entry_change);
+
+  const on_restore_hit = (event) => {
+    const detail = event.detail;
+    if (!detail?.historyElt?.matches?.(target)) return;
+    if (transition.mode() === "off") return;
+    detail.swapSpec.transition = true;
+    origin = traverse < 0 ? [0, 0.5] : traverse > 0 ? [1, 0.5] : undefined;
+    traverse = 0;
+    restore = { detail: null, done: false };
+  };
+
+  // Capture on the document: this runs before listeners on the body.
+  const hold_restore = (event) => {
+    if (!restore || restore.done || event.detail?.__folly_resent) return;
+    event.stopImmediatePropagation();
+    if (event.type === RESTORE_EVENTS[0]) restore.detail = event.detail;
+  };
+
+  const send_restore = (held) => {
+    if (held.done) return;
+    held.done = true;
+    if (restore === held) restore = null;
+    if (!held.detail) return;
+    htmx.trigger(document_value.body, RESTORE_EVENTS[0], {
+      ...held.detail,
+      __folly_resent: true,
+    });
+  };
+
+  const run_swap = (update, ring_origin) => {
+    const held = restore;
+    const change = held
+      ? () => {
+          const result = update();
+          send_restore(held);
+          return result;
+        }
+      : update;
+    transition
+      .run(change, { origin: ring_origin })
+      .catch((error) => console.warn("[folly] page transition failed", error))
+      .finally(() => held && send_restore(held));
+  };
 
   const listeners = {
     "htmx:beforeSwap"(event) {
@@ -460,22 +525,21 @@ export function bind_htmx_navigation(
         detail.swapOverride ?? inherited_swap(htmx, element),
       );
     },
+    "htmx:historyCacheHit": on_restore_hit,
+    "htmx:historyCacheMissLoad": on_restore_hit,
     "htmx:beforeTransition"(event) {
-      if (!ours(event.detail)) return;
+      if (!ours(event.detail) && !restore) return;
       if (transition.mode() === "off") {
         // htmx then swaps without a view transition.
         event.preventDefault();
+        restore = null;
         return;
       }
       const ring_origin = origin;
       origin = undefined;
       document_value.startViewTransition = (update) => {
         delete document_value.startViewTransition;
-        transition
-          .run(update, { origin: ring_origin })
-          .catch((error) =>
-            console.warn("[folly] page transition failed", error),
-          );
+        run_swap(update, ring_origin);
       };
     },
   };
@@ -483,12 +547,19 @@ export function bind_htmx_navigation(
   for (const [name, listener] of Object.entries(listeners)) {
     document_value.addEventListener(name, listener);
   }
+  for (const name of RESTORE_EVENTS) {
+    document_value.addEventListener(name, hold_restore, true);
+  }
 
   const binding = {
     unbind() {
       for (const [name, listener] of Object.entries(listeners)) {
         document_value.removeEventListener(name, listener);
       }
+      for (const name of RESTORE_EVENTS) {
+        document_value.removeEventListener(name, hold_restore, true);
+      }
+      navigation?.removeEventListener("currententrychange", on_entry_change);
       delete htmx[HTMX_BOUND];
     },
   };

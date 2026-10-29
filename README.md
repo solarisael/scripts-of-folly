@@ -77,6 +77,10 @@ Preload requests do not start a transition.
 A failed request, or a response without a swap, does not start a transition.
 The page stays clickable during the ring.
 A new navigation skips the running transition.
+Back and forward also play the ring when htmx restores the target from its history.
+The ring starts at the left edge for back and at the right edge for forward.
+Without the Navigation API, it starts at the centre.
+The binding sends `htmx:historyRestore` again after the swap, so its listeners see the restored page.
 The transition sends `folly:transition-started` and `folly:transition-finished` on the document.
 A host can give a fixed element its own `view-transition-name` to keep it above the ring.
 
