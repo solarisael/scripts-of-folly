@@ -42,36 +42,42 @@ A host page can show its text effects after this event.
 ## Page transitions
 
 Import page transitions from `scripts-of-folly/transitions`.
-A transition closes a cover over the page, changes the page, and opens the cover again.
+A transition grows one ring of ink from the clicked link, and the new page shows inside the ring.
 
 ```js
-const transition = create_page_transition({ open_gpu, mode: () => "shader" });
-await transition.run(() => apply_new_state());
-bind_htmx_navigation(htmx, transition, { target: "#page", ready });
+const transition = create_page_transition({ mode: () => "ink" });
+await transition.run(() => apply_new_state(), { origin: [0.5, 0.35] });
+bind_htmx_navigation(htmx, transition, { target: "#page" });
 ```
 
-The mode can be `shader`, `fade`, or `off`.
-The `shader` mode draws the cover with one WGSL shader on WebGPU or on the WebGL2 leg.
-When both fail, the transition uses `fade` for the rest of the page.
-Reduced motion always uses `off`.
-The cover uses the page background as its paper and the page text colour as its ink.
+The mode can be `ink`, `fade`, or `off`.
+The `ink` mode uses the View Transitions API.
+The browser keeps a picture of the old page, and the ring clips the live new page over it.
+The ring is a band of ink, and the clip line of the new page runs through its middle.
+The ring takes `ring_ms` (1600 ms by default).
+`ring_width(view_width, view_height)` gives half the band in CSS pixels.
+The `fade` mode cross-fades the two pages in `fade_ms` (600 ms by default).
+Reduced motion, and a browser without View Transitions, always use `off`.
 
-`bind_htmx_navigation()` holds each request for the target at `htmx:confirm`.
-It closes the cover, and then it sends the request.
-Thus the swap occurs under a closed cover.
-The request never waits longer than `max_hold_ms` (2 seconds) for the cover.
-Then `close_now()` closes the cover at once on the fade sheet, and the request goes out.
-It opens the cover after the swap and after `ready()` resolves.
-A failed request, or a response without a swap, opens the cover on the old page.
-Preload requests and requests with an `hx-confirm` question do not start a cover.
-
-A transition never waits for the shader to compile.
-Until the shader is open, transitions use the fade cover, and the shader opens in the background.
-`warm()` opens the shader before the first transition.
-The covered event tells which cover played: `detail.mode` is `shader` or `fade`.
-The cover uses the colours of `document.body` by default.
+A host can draw the band with its own look.
+Pass `open_painter(canvas)`, which resolves to `{ draw(frame), dispose() }`.
+The frame holds `x`, `y`, `radius`, `width`, `progress`, `seconds`, `view_width`, and `view_height`, in CSS pixels.
+`draw` must cover the line with opaque ink and stay within `width * 2` of the line.
+`warm()` opens the painter before the first transition.
+A transition never waits for the painter.
+Until the painter is open, and after it fails, the ring is a soft band on a 2D canvas.
+The 2D band uses the text colour of `document.body` by default.
 Pass `colors: () => colors_of(element)` to use the element that holds the reading text.
-The shader cover renders at half the CSS size, because it is soft noise.
-The cover sends `folly:transition-covered` and `folly:transition-revealed` on the document.
+`folly:transition-started` tells which surface drew the ring: `detail.painter` is `host` or `soft`.
+
+`bind_htmx_navigation()` sends each request for the target at once.
+When the response arrives, it removes the swap and settle delays and asks htmx to swap inside a view transition.
+The ring starts at the centre of the clicked link.
+Preload requests do not start a transition.
+A failed request, or a response without a swap, does not start a transition.
+The page stays clickable during the ring.
+A new navigation skips the running transition.
+The transition sends `folly:transition-started` and `folly:transition-finished` on the document.
+A host can give a fixed element its own `view-transition-name` to keep it above the ring.
 
 The Pretext sentence transitions are at `scripts-of-folly/pretext/transitions`.

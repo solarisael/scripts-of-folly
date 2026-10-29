@@ -24,18 +24,21 @@ const SHADERS = [
     name: "BANNER_WGSL",
     output: "src/vision/glsl.generated.js",
   },
-  {
-    source: "src/transitions/wgsl.js",
-    name: "COVER_WGSL",
-    output: "src/transitions/glsl.generated.js",
-  },
 ];
 
 const run_naga = async (input, output, entry_point) => {
   let child;
   try {
     child = Bun.spawn(
-      ["naga", input, output, "--profile", "es300", "--entry-point", entry_point],
+      [
+        "naga",
+        input,
+        output,
+        "--profile",
+        "es300",
+        "--entry-point",
+        entry_point,
+      ],
       { stdout: "pipe", stderr: "pipe" },
     );
   } catch (error) {
