@@ -26,6 +26,7 @@ export async function create_renderer(
     backend = "auto",
     is_alive = () => true,
     on_lost = () => {},
+    on_gpu_time = () => {},
     open = open_gpu,
   } = {},
 ) {
@@ -42,10 +43,12 @@ export async function create_renderer(
 
     let backend_state = null;
     try {
-      const opened = await open(attempts[attempt_index]);
+      // A host open_gpu may ignore the request; timing is then off.
+      const opened = await open(attempts[attempt_index], { timing: true });
       backend_state = await create_gpu_backend(current_canvas, opened, {
         is_alive,
         on_lost,
+        on_gpu_time,
       });
       if (backend_state && backend_state.backend !== opened.kind) {
         throw new Error(`Invalid ${opened.kind} backend state`);

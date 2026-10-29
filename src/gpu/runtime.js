@@ -2,6 +2,7 @@ import { WIDE_CAPTURE_PADDING } from "./blur_levels.js";
 import { capture_text } from "./text_capture.js";
 import { read_effect_parameters } from "./parameters.js";
 import { create_renderer, dispose_renderer } from "./renderer.js";
+import { create_frame_budget, LEVELS } from "./budget.js";
 import {
   collect_effect_names,
   TEXT_EFFECTS,
@@ -196,8 +197,51 @@ function make_panel_capture(element) {
   };
 }
 
-// `open_gpu(kind)` lets a host page open the gpu through its own seam. It
-// returns { kind, api, gpu } like open_gpu in ./renderer.js, the default.
+// Lays the visible effects out in rows on the one source canvas, in device
+// pixels, so one pass draws all of them and the frame waits for the GPU once.
+// A batch stays within MAX_ATLAS_PIXELS on each side (the WebGL2 leg's safe
+// texture size); more effects start another batch. An effect larger than
+// that gets a batch of its own, as before.
+const MAX_ATLAS_PIXELS = 4096;
+const ATLAS_GAP = 2;
+
+function pack_atlas(entries, dpr) {
+  const batches = [];
+  let batch = null;
+  let x = 0;
+  let y = 0;
+  let row_height = 0;
+  const start_batch = () => {
+    batch = { tiles: [], width: 1, height: 1 };
+    batches.push(batch);
+    x = 0;
+    y = 0;
+    row_height = 0;
+  };
+  for (const entry of entries) {
+    const width = Math.max(1, Math.ceil(entry.item.width * dpr));
+    const height = Math.max(1, Math.ceil(entry.item.height * dpr));
+    if (!batch) start_batch();
+    if (x > 0 && x + width > MAX_ATLAS_PIXELS) {
+      x = 0;
+      y += row_height + ATLAS_GAP;
+      row_height = 0;
+    }
+    if (y > 0 && y + height > MAX_ATLAS_PIXELS) start_batch();
+    batch.tiles.push({ entry, x, y, width, height });
+    batch.width = Math.max(batch.width, x + width);
+    batch.height = Math.max(batch.height, y + height);
+    x += width + ATLAS_GAP;
+    row_height = Math.max(row_height, height);
+  }
+  return batches;
+}
+
+// `open_gpu(kind, request)` lets a host page open the gpu through its own
+// seam. It returns { kind, api, gpu } like open_gpu in ./renderer.js, the
+// default. `request.timing` asks for GPU timing; webgpu_init_options turns it
+// into vgpu init options.
+export { webgpu_init_options } from "./open_gpu.js";
 export function install_gpu_effects({
   root = document,
   backend = "auto",
@@ -232,6 +276,10 @@ export function install_gpu_effects({
   let failed = false;
   let fallback_attempted = backend === "webgl2";
   let recovering = false;
+  const budget = create_frame_budget({ now: () => view.performance.now() });
+  // Recent gaps between drawn frames, for a page at display refresh. The
+  // shortest one is the refresh: a slow frame only adds longer gaps.
+  const recent_gaps = [];
 
   function current_reduced_motion() {
     return (
@@ -262,6 +310,27 @@ export function install_gpu_effects({
       if (Number.isFinite(parsed) && parsed > 0) return parsed;
     }
     return 60;
+  }
+
+  // The frame interval the budget divides: the fps setting, or the display
+  // refresh. It never comes from the loop's own pace, or a slow frame would
+  // grow the interval and slow the next one.
+  function current_frame_ms(frame_time) {
+    const fps = current_fps();
+    if (fps > 0) return 1000 / fps;
+    if (previous_frame_time != null) {
+      const gap = frame_time - previous_frame_time;
+      if (gap > 2 && gap < 100) recent_gaps.push(gap);
+      if (recent_gaps.length > 60) recent_gaps.shift();
+    }
+    return recent_gaps.length ? Math.min(...recent_gaps) : 1000 / 60;
+  }
+
+  // data-folly-gpu-level shows the budget level of an effect (0 is full).
+  function show_level(item) {
+    const level = String(LEVELS.indexOf(budget.level_of(item)));
+    if (item.target.getAttribute("data-folly-gpu-level") !== level)
+      item.target.setAttribute("data-folly-gpu-level", level);
   }
 
   function is_alive(token = epoch) {
@@ -468,7 +537,6 @@ export function install_gpu_effects({
         const entry = item_entry(item);
         if (entry) entries.push(entry);
       }
-
       if (!entries.length) {
         if (!empty_frame_cleared) {
           await renderer_state.render([], 0);
@@ -479,6 +547,8 @@ export function install_gpu_effects({
         return;
       }
       empty_frame_cleared = false;
+      // Before previous_frame_time moves on to this frame.
+      const frame_ms = current_frame_ms(frame_time);
       if (current_reduced_motion()) {
         animation_time = 0;
       } else if (previous_frame_time != null) {
@@ -489,39 +559,91 @@ export function install_gpu_effects({
       try {
         // Each copy owns only its ink. DOM ancestors clip it when the page scrolls.
         const dpr = Math.min(1.5, Math.max(1, view.devicePixelRatio || 1));
-        renderer_state.resize(
-          Math.ceil(Math.max(...entries.map(({ item }) => item.width))),
-          Math.ceil(Math.max(...entries.map(({ item }) => item.height))),
-          dpr,
+        budget.settle(
+          entries.map(({ item }) => item),
+          frame_ms,
         );
-        const source_canvas = renderer_state.canvas;
+        // The effects due on this frame, grouped by render scale. The others
+        // keep their last picture.
+        const by_scale = new Map();
         for (const entry of entries) {
-          const { item, handle, rect, clip } = entry;
-          await renderer_state.render([{ handle, rect, clip }], animation_time);
-          if (dead || !item.presentation) return;
-          const { canvas: presentation_canvas, context } = item.presentation;
-          const width = Math.max(1, Math.round(item.width * dpr));
-          const height = Math.max(1, Math.round(item.height * dpr));
-          if (
-            presentation_canvas.width !== width ||
-            presentation_canvas.height !== height
-          ) {
-            presentation_canvas.width = width;
-            presentation_canvas.height = height;
+          if (!budget.due(entry.item, frame_time)) continue;
+          const level = budget.level_of(entry.item);
+          show_level(entry.item);
+          if (!by_scale.has(level.scale)) by_scale.set(level.scale, []);
+          by_scale.get(level.scale).push(entry);
+        }
+        for (const [scale, group] of by_scale) {
+          const density = dpr * scale;
+          for (const batch of pack_atlas(group, density)) {
+            renderer_state.resize(
+              batch.width / density,
+              batch.height / density,
+              dpr,
+              scale,
+            );
+            await renderer_state.render(
+              batch.tiles.map(({ entry, x, y }) => {
+                const left = x / density;
+                const top = y / density;
+                const { width, height } = entry.item;
+                return {
+                  handle: entry.handle,
+                  rect: { left, top, width, height },
+                  clip: {
+                    left,
+                    top,
+                    right: left + width,
+                    bottom: top + height,
+                  },
+                };
+              }),
+              animation_time,
+            );
+            if (dead) return;
+            for (const { entry } of batch.tiles) {
+              budget.drawn(
+                entry.item,
+                frame_time,
+                frame_ms,
+                entry.item.width * entry.item.height * dpr * dpr,
+                scale,
+              );
+            }
+            const source_canvas = renderer_state.canvas;
+            for (const { entry, x, y, width, height } of batch.tiles) {
+              // A refresh can dispose an item while the GPU draws.
+              if (!entry.item.presentation) continue;
+              const { canvas: presentation_canvas, context } =
+                entry.item.presentation;
+              // The copy keeps the full size; a lower scale is drawn larger.
+              const full_width = Math.max(1, Math.ceil(entry.item.width * dpr));
+              const full_height = Math.max(
+                1,
+                Math.ceil(entry.item.height * dpr),
+              );
+              if (
+                presentation_canvas.width !== full_width ||
+                presentation_canvas.height !== full_height
+              ) {
+                presentation_canvas.width = full_width;
+                presentation_canvas.height = full_height;
+              }
+              context.clearRect(0, 0, full_width, full_height);
+              context.drawImage(
+                source_canvas,
+                x,
+                y,
+                width,
+                height,
+                0,
+                0,
+                full_width,
+                full_height,
+              );
+              presentation_canvas.style.visibility = "visible";
+            }
           }
-          context.clearRect(0, 0, width, height);
-          context.drawImage(
-            source_canvas,
-            rect.left * dpr,
-            rect.top * dpr,
-            item.width * dpr,
-            item.height * dpr,
-            0,
-            0,
-            width,
-            height,
-          );
-          presentation_canvas.style.visibility = "visible";
         }
         for (const { item } of entries) {
           item.target.setAttribute(
@@ -610,6 +732,14 @@ export function install_gpu_effects({
         backend: requested_backend,
         is_alive: () => is_alive(token),
         on_lost: (loss_error) => recover_from_loss(loss_error),
+        on_gpu_time: (handle, ms) => {
+          for (const item of items.values()) {
+            if (item.handle === handle) {
+              budget.gpu_time(item, ms);
+              return;
+            }
+          }
+        },
         open: open_gpu,
       });
 

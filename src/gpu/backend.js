@@ -166,7 +166,14 @@ async function copy_capture(gpu, texture, captured, width, height) {
 export async function create_gpu_backend(
   canvas,
   opened,
-  { is_alive = () => true, on_lost = () => {} } = {},
+  {
+    is_alive = () => true,
+    on_lost = () => {},
+    // Called with (handle, ms) when the GPU time of one effect's draw is
+    // known, one or two frames after the draw. Only on WebGPU with the
+    // "timestamp-query" feature.
+    on_gpu_time = () => {},
+  } = {},
 ) {
   const { kind: backend_kind, api, gpu } = opened;
   if (!canvas || typeof canvas.getContext !== "function") {
@@ -190,6 +197,10 @@ export async function create_gpu_backend(
     height: canvas.height,
   });
   let current_dpr = 1;
+  // Device pixels per CSS pixel of the surface: dpr times the render scale.
+  // The shader keeps the real dpr, so a lower scale changes only the pixel
+  // count, not the look.
+  let current_density = 1;
   let canvas_surface;
   let unsubscribe_error;
   let unsubscribe_uncaptured = () => {};
@@ -226,13 +237,55 @@ export async function create_gpu_backend(
     throw error;
   }
 
-  const resize = (width, height, dpr = 1) => {
+  // GPU timing: each effect draws in its own pass, and the pass reports its
+  // time under the name of its handle. Without the feature all effects share
+  // one pass, untimed.
+  let timer = null;
+  let unsubscribe_timer = () => {};
+  const timed_handles = new Map();
+  let next_span_id = 0;
+  if (
+    backend_kind === "webgpu" &&
+    typeof api.timer === "function" &&
+    gpu.gpu?.features?.has?.("timestamp-query")
+  ) {
+    try {
+      timer = api.timer(gpu);
+      unsubscribe_timer = timer.onResults((spans) => {
+        for (const [name, ms] of Object.entries(spans)) {
+          const handle = timed_handles.get(name);
+          if (handle && !handle.disposed) on_gpu_time(handle, ms);
+        }
+      });
+    } catch (error) {
+      // Timing is optional: the effects draw the same without it, and the
+      // frame budget then leaves them at full quality.
+      console.warn("[Scripts of Folly] GPU timing unavailable", error);
+      timer = null;
+    }
+  }
+  const span_of = (handle) => {
+    if (!handle.span) {
+      handle.span_name = `fx${(next_span_id += 1)}`;
+      handle.span = timer.span(handle.span_name);
+      timed_handles.set(handle.span_name, handle);
+    }
+    return handle.span;
+  };
+
+  // `scale` (0 to 1) renders the surface with fewer pixels than the dpr asks.
+  const resize = (width, height, dpr = 1, scale = 1) => {
     if (disposed) return;
 
     current_dpr = Math.max(1, finite(dpr, 1));
+    current_density =
+      current_dpr * Math.min(1, Math.max(0.1, finite(scale, 1)));
     const next_size = [
-      Math.max(1, Math.round(finite(width, current_size[0]) * current_dpr)),
-      Math.max(1, Math.round(finite(height, current_size[1]) * current_dpr)),
+      Math.max(1, Math.round(finite(width, current_size[0]) * current_density)),
+      Math.max(
+        1,
+        Math.round(finite(height, current_size[1]) * current_density),
+      ),
     ];
 
     if (next_size[0] === current_size[0] && next_size[1] === current_size[1])
@@ -372,6 +425,7 @@ export async function create_gpu_backend(
         this.texture.dispose();
         if (this.soft_texture !== this.texture) this.soft_texture.dispose();
         this.drawable.dispose?.();
+        if (this.span_name) timed_handles.delete(this.span_name);
       },
     };
     handles.add(handle);
@@ -381,22 +435,39 @@ export async function create_gpu_backend(
   const render = async (entries = [], time_seconds = 0) => {
     if (disposed || !is_alive()) return;
     const viewport = {
-      width: current_size[0] / current_dpr,
-      height: current_size[1] / current_dpr,
+      width: current_size[0] / current_density,
+      height: current_size[1] / current_density,
       dpr: current_dpr,
     };
+    const live = entries.filter(
+      (entry) =>
+        entry?.handle && !entry.handle.disposed && handles.has(entry.handle),
+    );
     api.frame(gpu, (current_frame) => {
-      current_frame.pass(
-        { target: canvas_surface, clear: [0, 0, 0, 0] },
-        (pass) => {
-          for (const entry of entries) {
-            const handle = entry?.handle;
-            if (!handle || handle.disposed || !handles.has(handle)) continue;
-            update_values(handle, entry, time_seconds, viewport);
-            pass.draw(handle.drawable);
-          }
-        },
-      );
+      if (!timer || !live.length) {
+        current_frame.pass(
+          { target: canvas_surface, clear: [0, 0, 0, 0] },
+          (pass) => {
+            for (const entry of live) {
+              update_values(entry.handle, entry, time_seconds, viewport);
+              pass.draw(entry.handle.drawable);
+            }
+          },
+        );
+        return;
+      }
+      live.forEach((entry, index) => {
+        update_values(entry.handle, entry, time_seconds, viewport);
+        current_frame.pass(
+          {
+            target: canvas_surface,
+            // The first pass clears the atlas; the others keep it.
+            clear: index === 0 ? [0, 0, 0, 0] : false,
+            timer: span_of(entry.handle),
+          },
+          (pass) => pass.draw(entry.handle.drawable),
+        );
+      });
     });
     await gpu.settled();
   };
@@ -408,6 +479,8 @@ export async function create_gpu_backend(
     handles.clear();
     unsubscribe_error?.();
     unsubscribe_uncaptured();
+    unsubscribe_timer();
+    timer?.dispose();
     canvas_surface.dispose();
     gpu.dispose();
   };
@@ -415,6 +488,7 @@ export async function create_gpu_backend(
   return {
     canvas,
     backend: backend_kind,
+    timed: Boolean(timer),
     gpu,
     resize,
     prepare,
