@@ -15,7 +15,7 @@ export const TEXT_FRAME_SHARE = 0.5;
 // The share of each effect, relative to 1. Expensive effects (many noise
 // octaves or blur taps) get a larger share. A stacked effect adds the shares
 // of its layers.
-const EFFECT_SHARES = Object.freeze({
+export const EFFECT_SHARES = Object.freeze({
   aura: 2,
   veil: 2,
   drown: 2,
@@ -44,12 +44,9 @@ const STEP_UP_HEADROOM = 0.7;
 // How fast the cost estimate follows new measurements (0 to 1).
 const SMOOTHING = 0.2;
 
-export const effect_share = (names = []) =>
+export const effect_share = (names = [], shares = EFFECT_SHARES) =>
   names.length
-    ? names.reduce(
-        (sum, name) => sum + (EFFECT_SHARES[name] ?? DEFAULT_SHARE),
-        0,
-      )
+    ? names.reduce((sum, name) => sum + (shares[name] ?? DEFAULT_SHARE), 0)
     : DEFAULT_SHARE;
 
 // The average cost per frame of an effect at `level`, from its cost per
@@ -60,17 +57,29 @@ const average_ms = (state, level) => {
   return state.unit_ms * state.pixels * scale * scale * rate;
 };
 
-export function create_frame_budget({ now = () => performance.now() } = {}) {
+// `frame_share` and `shares` start at TEXT_FRAME_SHARE and EFFECT_SHARES.
+// `tune()` changes them while the page runs, and `report()` tells the state
+// of each effect of the last settle. A host can use both to show the budget
+// and try other numbers.
+export function create_frame_budget({
+  now = () => performance.now(),
+  frame_share = TEXT_FRAME_SHARE,
+  shares = EFFECT_SHARES,
+} = {}) {
   const states = new WeakMap();
+  const tuning = { frame_share, shares: { ...shares } };
+  let last = { items: [], frame_ms: 0 };
 
   const state_of = (item) => {
     let state = states.get(item);
     if (!state) {
       state = {
         level: 0,
+        // A GPU time came back. A time can be 0: the browser rounds GPU
+        // timestamps, and a small pass costs less than one step.
+        measured: false,
         unit_ms: 0,
         pixels: 1,
-        share: effect_share(item.names),
         over_since: null,
         under_since: null,
         next_draw: 0,
@@ -80,9 +89,50 @@ export function create_frame_budget({ now = () => performance.now() } = {}) {
     }
     return state;
   };
+  const share_of = (item) => effect_share(item.names, tuning.shares);
 
   return {
     level_of: (item) => LEVELS[state_of(item).level],
+
+    // Sets the part of each frame for all text effects (0 to 1), and the
+    // share of named effects. A share of an unnamed effect stays as it is.
+    tune({ frame_share: next_frame_share, shares: next_shares } = {}) {
+      if (Number.isFinite(next_frame_share) && next_frame_share > 0)
+        tuning.frame_share = Math.min(1, next_frame_share);
+      for (const [name, share] of Object.entries(next_shares ?? {})) {
+        if (Number.isFinite(share) && share > 0) tuning.shares[name] = share;
+      }
+    },
+
+    // The tuning in use, and each effect of the last settle: its names,
+    // level, measured GPU cost per frame at that level (null before a
+    // measurement), and its part of the frame. It reads the state now, so a
+    // GPU time that came back after the settle shows.
+    report() {
+      const page_ms = last.frame_ms * tuning.frame_share;
+      let total_share = 0;
+      for (const item of last.items) total_share += share_of(item);
+      return {
+        frame_share: tuning.frame_share,
+        shares: { ...tuning.shares },
+        default_share: DEFAULT_SHARE,
+        levels: LEVELS,
+        frame_ms: last.frame_ms,
+        page_ms,
+        effects: last.items.map((item) => {
+          const state = state_of(item);
+          const share = share_of(item);
+          return {
+            target: item.target,
+            names: [...(item.names ?? [])],
+            share,
+            budget_ms: total_share ? (page_ms * share) / total_share : 0,
+            level: state.level,
+            cost_ms: state.measured ? average_ms(state, state.level) : null,
+          };
+        }),
+      };
+    },
 
     // True when the effect should draw on this frame. At full rate the
     // runtime's own frame pacing decides, so the budget never gates it.
@@ -114,24 +164,26 @@ export function create_frame_budget({ now = () => performance.now() } = {}) {
       if (!state?.drawn_scale || !Number.isFinite(ms) || ms < 0) return;
       const unit =
         ms / Math.max(1, state.pixels * state.drawn_scale * state.drawn_scale);
-      state.unit_ms = state.unit_ms
+      state.unit_ms = state.measured
         ? state.unit_ms + (unit - state.unit_ms) * SMOOTHING
         : unit;
+      state.measured = true;
     },
 
     // Moves each visible effect between levels. `frame_ms` is the frame
     // interval of the page.
     settle(visible_items, frame_ms) {
-      const page_ms = frame_ms * TEXT_FRAME_SHARE;
+      const page_ms = frame_ms * tuning.frame_share;
       let total_share = 0;
-      for (const item of visible_items) total_share += state_of(item).share;
+      for (const item of visible_items) total_share += share_of(item);
       if (total_share <= 0) return;
       const time = now();
+      last = { items: [...visible_items], frame_ms };
 
       for (const item of visible_items) {
         const state = state_of(item);
-        if (!state.unit_ms) continue;
-        const budget_ms = (page_ms * state.share) / total_share;
+        const budget_ms = (page_ms * share_of(item)) / total_share;
+        if (!state.measured) continue;
 
         if (
           state.level < LEVELS.length - 1 &&

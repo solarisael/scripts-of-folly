@@ -582,6 +582,17 @@ export function install_gpu_effects({
               dpr,
               scale,
             );
+            // Record the draw before the GPU runs it: its GPU time can come
+            // back before `render` resolves, and the budget needs the scale.
+            for (const { entry } of batch.tiles) {
+              budget.drawn(
+                entry.item,
+                frame_time,
+                frame_ms,
+                entry.item.width * entry.item.height * dpr * dpr,
+                scale,
+              );
+            }
             await renderer_state.render(
               batch.tiles.map(({ entry, x, y }) => {
                 const left = x / density;
@@ -601,15 +612,6 @@ export function install_gpu_effects({
               animation_time,
             );
             if (dead) return;
-            for (const { entry } of batch.tiles) {
-              budget.drawn(
-                entry.item,
-                frame_time,
-                frame_ms,
-                entry.item.width * entry.item.height * dpr * dpr,
-                scale,
-              );
-            }
             const source_canvas = renderer_state.canvas;
             for (const { entry, x, y, width, height } of batch.tiles) {
               // A refresh can dispose an item while the GPU draws.
@@ -1147,5 +1149,10 @@ export function install_gpu_effects({
 
   schedule_refresh();
 
-  return { refresh, dispose };
+  // `budget` lets a host show the frame budget and tune it while it runs.
+  return {
+    refresh,
+    dispose,
+    budget: { report: budget.report, tune: budget.tune },
+  };
 }
