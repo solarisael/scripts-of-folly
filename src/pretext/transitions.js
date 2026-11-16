@@ -221,6 +221,18 @@ const replace_pretext_content = (root, next_html, on_swap) => {
   layout_pretext_root(root);
 };
 
+// Opens the shader of the transitions before the first one plays. A
+// transition never waits for the shader: until it is open, a transition plays
+// its native animation. Resolves to true when shader transitions can play.
+export const warm_pretext_transitions = async (options = {}) => {
+  const { warm_shader_transitions } = await import("./shader_transition.js");
+
+  return warm_shader_transitions(
+    options.document ?? globalThis.document,
+    options,
+  );
+};
+
 export const transition_pretext_content = async (
   root,
   next_html,
