@@ -14,6 +14,25 @@ const duration_options = (duration, delay = 0, easing) => ({
   fill: "both",
 });
 
+const AT_REST = Object.freeze({
+  opacity: 1,
+  transform: "translate(0, 0)",
+  filter: "blur(0px)",
+});
+
+// The native animation moves a whole fragment, so it cannot crumble. It moves
+// the fragment 18 px along the travel, or in a random direction without one.
+const crumbled_away = ([x, y]) => {
+  const reach = Math.hypot(x, y);
+  const angle = reach > 0 ? Math.atan2(y, x) : random_between(0, 2 * Math.PI);
+
+  return {
+    opacity: 0,
+    transform: `translate(${Math.cos(angle) * 18}px, ${Math.sin(angle) * 18}px)`,
+    filter: "blur(4px)",
+  };
+};
+
 export const PRETEXT_TRANSITION_EFFECTS = Object.freeze({
   dust: Object.freeze({
     out: () => ({
@@ -79,6 +98,16 @@ export const PRETEXT_TRANSITION_EFFECTS = Object.freeze({
       options: duration_options(560, 0, "ease-out"),
     }),
   }),
+  crumble: Object.freeze({
+    out: (_fragment, _index, _count, travel) => ({
+      keyframes: [AT_REST, crumbled_away(travel)],
+      options: duration_options(520, 0, "ease-in"),
+    }),
+    in: (_fragment, _index, _count, travel) => ({
+      keyframes: [crumbled_away(travel), AT_REST],
+      options: duration_options(560, 0, "ease-out"),
+    }),
+  }),
 });
 
 const reduced_motion = () =>
@@ -95,14 +124,19 @@ const motion_multiplier = (root) => {
   return Number.isFinite(value) && value > 0 ? value : 1;
 };
 
-const resolve_transition_effect = (name) =>
-  PRETEXT_TRANSITION_EFFECTS[name] ?? PRETEXT_TRANSITION_EFFECTS.dust;
-
 const transition_timing = (options) => ({
   out_ms: options.out_ms ?? 520,
   in_ms: options.in_ms ?? 560,
   stagger_ms: options.stagger_ms ?? 14,
 });
+
+// The CSS pixels the crumbs of "crumble" travel. [0, 0] lets each crumb drift
+// in its own direction.
+const transition_travel = (options) => {
+  const [x, y] = Array.isArray(options.travel) ? options.travel : [];
+
+  return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : [0, 0];
+};
 
 const can_animate = (fragments) =>
   fragments.every((fragment) => typeof fragment.animate === "function");
@@ -150,6 +184,7 @@ const animate_fragments = async (
   stagger,
   multiplier,
   generation,
+  travel,
 ) => {
   const animations = [];
   active_animations.set(root, animations);
@@ -157,7 +192,12 @@ const animate_fragments = async (
   for (let index = 0; index < fragments.length; index += 1) {
     if (active_generation.get(root) !== generation) return false;
 
-    const result = effect[phase](fragments[index], index, fragments.length);
+    const result = effect[phase](
+      fragments[index],
+      index,
+      fragments.length,
+      travel,
+    );
     const animation = fragments[index].animate(result.keyframes, {
       ...result.options,
       duration: duration * multiplier,
@@ -197,8 +237,11 @@ export const transition_pretext_content = async (
     active_generation.get(root) === generation && !controller.signal.aborted;
 
   try {
-    const name = options.effect === "fog" ? "fog" : "dust";
-    const effect = resolve_transition_effect(name);
+    const name = Object.hasOwn(PRETEXT_TRANSITION_EFFECTS, options.effect)
+      ? options.effect
+      : "dust";
+    const effect = PRETEXT_TRANSITION_EFFECTS[name];
+    const travel = transition_travel(options);
     const { out_ms, in_ms, stagger_ms } = transition_timing(options);
     const multiplier = motion_multiplier(root);
     const current_fragments = Array.from(
@@ -226,6 +269,7 @@ export const transition_pretext_content = async (
           return await shader.play(fragments, {
             phase,
             effect: name,
+            travel,
             duration,
             stagger: stagger_ms,
             multiplier,
@@ -253,6 +297,7 @@ export const transition_pretext_content = async (
         stagger_ms,
         multiplier,
         generation,
+        travel,
       );
     };
 

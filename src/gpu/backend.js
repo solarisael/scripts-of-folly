@@ -125,6 +125,7 @@ function update_values(handle, entry, time_seconds, viewport) {
   handle.base_values[3] = 1;
 
   handle.transition_values.set(entry.transition ?? [0, 0, 0, 0]);
+  handle.travel_values.set(entry.travel ?? [0, 0, 0, 0]);
   drawable.set({
     frame: handle.frame_values,
     rect: handle.rect_values,
@@ -136,6 +137,7 @@ function update_values(handle, entry, time_seconds, viewport) {
     order,
     order_count,
     transition: handle.transition_values,
+    travel: handle.travel_values,
   });
 }
 
@@ -417,6 +419,7 @@ export async function create_gpu_backend(
         1,
       ]),
       transition_values: new Float32Array(4),
+      travel_values: new Float32Array(4),
       disposed: false,
       dispose() {
         if (this.disposed) return;

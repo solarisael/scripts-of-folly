@@ -2,6 +2,7 @@ import { capture_text } from "../gpu/text_capture.js";
 import { create_renderer, dispose_renderer } from "../gpu/renderer.js";
 
 const PADDING = 32;
+const SHADER_MODES = { dust: 1, fog: 2, crumble: 3 };
 
 export function create_shader_transition(root, { backend = "auto", signal }) {
   const doc = root.ownerDocument;
@@ -111,7 +112,7 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
     await prepare_renderer("webgl2");
   }
 
-  async function render_frame(progress_for, effect) {
+  async function render_frame(progress_for, effect, travel) {
     if (loss) await recover();
     if (!alive()) return;
 
@@ -129,12 +130,8 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
           height: item.captured.height,
         },
         clip,
-        transition: [
-          effect === "fog" ? 2 : 1,
-          progress_for(index),
-          index + 1,
-          0,
-        ],
+        transition: [SHADER_MODES[effect], progress_for(index), index + 1, 0],
+        travel: [travel[0], travel[1], 0, 0],
       };
     });
 
@@ -144,13 +141,13 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
       if (!alive()) return;
       loss = error;
       await recover();
-      await render_frame(progress_for, effect);
+      await render_frame(progress_for, effect, travel);
     }
   }
 
   async function play(
     fragments,
-    { phase, effect, duration, stagger, multiplier },
+    { phase, effect, travel, duration, stagger, multiplier },
   ) {
     restore_items();
     if (!alive()) return false;
@@ -252,7 +249,7 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
         };
 
         try {
-          in_flight = render_frame(progress_for, effect);
+          in_flight = render_frame(progress_for, effect, travel);
           await in_flight;
           if (settled) return;
           if (!hidden) {

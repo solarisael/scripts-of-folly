@@ -94,3 +94,8 @@ The transition sends `folly:transition-started` and `folly:transition-finished` 
 A host can give a fixed element its own `view-transition-name` to keep it above the ring.
 
 The Pretext sentence transitions are at `scripts-of-folly/pretext/transitions`.
+The `effect` option is `dust`, `fog`, or `crumble`.
+`crumble` breaks the text into small squares of its ink.
+Set `travel: [x, y]` in CSS pixels to make the crumbs flow that distance in that direction.
+Without `travel`, each crumb drifts in its own direction until it is gone.
+The crumbs do not go out of an ancestor that clips its overflow.
