@@ -98,6 +98,10 @@ The `effect` option is `dust`, `fog`, or `crumble`.
 `crumble` breaks the text into small squares of its ink.
 Set `travel: [x, y]` in CSS pixels to make the crumbs flow that distance in that direction.
 Without `travel`, each crumb drifts in its own direction until it is gone.
+Set `well: [x, y]` to make the crumbs fall into one point.
+The point is in CSS pixels from the top left of the root.
+The nearest crumbs fall first, each crumb starts slowly, and it is gone at the well.
+`well` has priority over `travel`.
 The crumbs do not go out of an ancestor that clips its overflow.
 A transition never waits for its shader.
 Until the shader is open, a transition plays a native animation and opens the shader for the next one.

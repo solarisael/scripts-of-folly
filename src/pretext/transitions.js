@@ -138,6 +138,14 @@ const transition_travel = (options) => {
   return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : [0, 0];
 };
 
+// The well of "crumble": the point the crumbs fall into, in CSS pixels from
+// the top left of the root. Null without one.
+const transition_well = (options) => {
+  const [x, y] = Array.isArray(options.well) ? options.well : [];
+
+  return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
+};
+
 const can_animate = (fragments) =>
   fragments.every((fragment) => typeof fragment.animate === "function");
 
@@ -184,7 +192,7 @@ const animate_fragments = async (
   stagger,
   multiplier,
   generation,
-  travel,
+  travel_of,
 ) => {
   const animations = [];
   active_animations.set(root, animations);
@@ -196,7 +204,7 @@ const animate_fragments = async (
       fragments[index],
       index,
       fragments.length,
-      travel,
+      travel_of(fragments[index]),
     );
     const animation = fragments[index].animate(result.keyframes, {
       ...result.options,
@@ -254,6 +262,18 @@ export const transition_pretext_content = async (
       : "dust";
     const effect = PRETEXT_TRANSITION_EFFECTS[name];
     const travel = transition_travel(options);
+    const well = name === "crumble" ? transition_well(options) : null;
+    // The native animation moves each fragment toward the well.
+    const travel_of = (fragment) => {
+      if (!well) return travel;
+
+      const origin = root.getBoundingClientRect();
+      const bounds = fragment.getBoundingClientRect();
+      return [
+        origin.left + well[0] - bounds.left - bounds.width / 2,
+        origin.top + well[1] - bounds.top - bounds.height / 2,
+      ];
+    };
     const { out_ms, in_ms, stagger_ms } = transition_timing(options);
     const multiplier = motion_multiplier(root);
     const current_fragments = Array.from(
@@ -283,6 +303,7 @@ export const transition_pretext_content = async (
             phase,
             effect: name,
             travel,
+            well,
             duration,
             stagger: stagger_ms,
             multiplier,
@@ -310,7 +331,7 @@ export const transition_pretext_content = async (
         stagger_ms,
         multiplier,
         generation,
-        travel,
+        travel_of,
       );
     };
 

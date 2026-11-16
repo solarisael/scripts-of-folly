@@ -82,7 +82,8 @@ struct VertexOut {
 @group(0) @binding(10) var glyph_sampler: sampler;
 @group(0) @binding(11) var<uniform> transition: vec4f;
 @group(0) @binding(12) var soft_glyph: texture_2d<f32>;
-// Crumble only: the CSS pixels its crumbs travel. The quad grows by this.
+// Crumble only. A travel: the CSS pixels the crumbs travel. A well: its place
+// in CSS pixels of the capture. The quad grows to hold it.
 @group(0) @binding(13) var<uniform> travel: vec4f;
 
 fn ordered_slot(slot: u32) -> bool {
@@ -359,8 +360,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOut {
   );
 
   let uv = points[vertex_index];
-  let grow = select(vec2f(0.0), travel.xy, transition.x > 2.5);
-  let css = rect.xy - max(-grow, vec2f(0.0)) + uv * (surface.xy + abs(grow));
+  let box = crumble_box();
+  let css = rect.xy + box.xy + uv * (box.zw - box.xy);
   let ndc = vec2f(css.x / max(frame.x, 1.0) * 2.0 - 1.0,
     1.0 - css.y / max(frame.y, 1.0) * 2.0);
 

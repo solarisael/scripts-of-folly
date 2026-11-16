@@ -2,7 +2,7 @@ import { capture_text } from "../gpu/text_capture.js";
 import { create_renderer, dispose_renderer } from "../gpu/renderer.js";
 
 const PADDING = 32;
-const SHADER_MODES = { dust: 1, fog: 2, crumble: 3 };
+const SHADER_MODES = { dust: 1, fog: 2, crumble: 3, well: 4 };
 const CANVAS_STYLE =
   "position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2147483000";
 
@@ -201,26 +201,37 @@ export function create_shader_transition(
     throw error;
   };
 
-  async function render_frame(progress_for, effect, travel) {
+  // `well` is a point in CSS pixels from the top left of `root`, or null.
+  async function render_frame(progress_for, effect, travel, well) {
     if (stage.loss) lose_stage(stage.loss);
     if (!alive()) return;
 
     const { width, height, dpr } = viewport_of(view);
     renderer.resize(width, height, dpr);
     const clip = clip_rect();
+    const origin = root.getBoundingClientRect();
     const entries = items.map((item, index) => {
       const bounds = item.fragment.getBoundingClientRect();
+      const left = bounds.left - PADDING;
+      const top = bounds.top - PADDING;
       return {
         handle: item.handle,
         rect: {
-          left: bounds.left - PADDING,
-          top: bounds.top - PADDING,
+          left,
+          top,
           width: item.captured.width,
           height: item.captured.height,
         },
         clip,
-        transition: [SHADER_MODES[effect], progress_for(index), index + 1, 0],
-        travel: [travel[0], travel[1], 0, 0],
+        transition: [
+          well ? SHADER_MODES.well : SHADER_MODES[effect],
+          progress_for(index),
+          index + 1,
+          0,
+        ],
+        travel: well
+          ? [origin.left + well[0] - left, origin.top + well[1] - top, 0, 0]
+          : [travel[0], travel[1], 0, 0],
       };
     });
 
@@ -234,7 +245,7 @@ export function create_shader_transition(
 
   async function play(
     fragments,
-    { phase, effect, travel, duration, stagger, multiplier },
+    { phase, effect, travel, well, duration, stagger, multiplier },
   ) {
     restore_items();
     if (!alive()) return false;
@@ -270,6 +281,26 @@ export function create_shader_transition(
     const phase_stagger = Math.max(0, Number(stagger) || 0) * multiplier;
     const total = phase_duration + phase_stagger * (items.length - 1);
     const start = view.performance.now();
+
+    // The turn of each fragment in the stagger. A well takes the nearest
+    // fragment first; the other motions go in text order.
+    const turns = items.map((_, index) => index);
+    if (well) {
+      const origin = root.getBoundingClientRect();
+      const distances = items.map((item) => {
+        const bounds = item.fragment.getBoundingClientRect();
+        return Math.hypot(
+          bounds.left + bounds.width / 2 - origin.left - well[0],
+          bounds.top + bounds.height / 2 - origin.top - well[1],
+        );
+      });
+      const nearest_first = turns.toSorted(
+        (a, b) => distances[a] - distances[b],
+      );
+      nearest_first.forEach((index, turn) => {
+        turns[index] = turn;
+      });
+    }
 
     return new Promise((resolve, reject) => {
       let frame = 0;
@@ -315,22 +346,17 @@ export function create_shader_transition(
 
         const elapsed = now - start;
         const progress_for = (index) => {
+          const wait = turns[index] * phase_stagger;
           const local =
             phase_duration > 0
-              ? Math.min(
-                  1,
-                  Math.max(
-                    0,
-                    (elapsed - index * phase_stagger) / phase_duration,
-                  ),
-                )
-              : Number(elapsed >= index * phase_stagger);
+              ? Math.min(1, Math.max(0, (elapsed - wait) / phase_duration))
+              : Number(elapsed >= wait);
           const eased = local * local * (3 - 2 * local);
           return phase === "out" ? eased : 1 - eased;
         };
 
         try {
-          in_flight = render_frame(progress_for, effect, travel);
+          in_flight = render_frame(progress_for, effect, travel, well);
           await in_flight;
           if (settled) return;
 
