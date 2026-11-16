@@ -254,7 +254,7 @@ export const install_pretext = ({ root = document } = {}) => {
               if (
                 changed_nodes.length &&
                 changed_nodes.every((node) =>
-                  node.matches?.(".folly-gpu-canvas"),
+                  node.matches?.(".folly-gpu-canvas, [data-folly-transition]"),
                 )
               )
                 continue;

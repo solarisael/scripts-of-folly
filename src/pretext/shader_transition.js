@@ -49,24 +49,28 @@ async function draw_warm_frame(doc, renderer) {
   }
 }
 
-async function open_stage(doc, backend) {
+async function open_stage(doc, backend, open_gpu) {
   const stage = { renderer: null, canvas: null, loss: null, busy: false };
 
   const first_canvas = doc.createElement("canvas");
+  first_canvas.dataset.follyTransition = "";
   first_canvas.hidden = true;
   doc.body.append(first_canvas);
 
   // create_renderer removes the canvas when no backend opens.
   const renderer = await create_renderer(first_canvas, {
     backend: webgpu_lost.has(doc) ? "webgl2" : backend,
+    open: open_gpu,
     on_lost: (error) => {
       stage.loss = error;
     },
   });
 
   // create_renderer gives a new canvas when it changes the backend.
+  // The canvas must not have the class folly-gpu-canvas: that class is the
+  // hidden atlas of the text effects (visibility: hidden in gpu.css). The
+  // data-folly-transition attribute marks it for the mutation observers.
   const canvas = renderer.canvas;
-  canvas.className = "folly-gpu-canvas";
   canvas.dataset.follyTransition = renderer.backend;
   canvas.setAttribute("aria-hidden", "true");
   canvas.hidden = true;
@@ -98,13 +102,17 @@ function close_stage(doc) {
 
 // Opens the stage of the document. Resolves to true when shader transitions
 // can play, and to false when no GPU backend opens. The work starts one time
-// for each document; later calls get the same promise.
-export function warm_shader_transitions(doc, { backend = "auto" } = {}) {
+// for each document; later calls get the same promise. `open_gpu` is the
+// host seam of ../gpu/open_gpu.js.
+export function warm_shader_transitions(
+  doc,
+  { backend = "auto", open_gpu } = {},
+) {
   const known = stages.get(doc);
   if (known) return known.opening;
 
   const entry = { stage: null, opening: null };
-  entry.opening = open_stage(doc, backend).then(
+  entry.opening = open_stage(doc, backend, open_gpu).then(
     (stage) => {
       entry.stage = stage;
       return true;
@@ -125,7 +133,10 @@ export function warm_shader_transitions(doc, { backend = "auto" } = {}) {
 // Gives the shader transition of `root`, or null when the stage cannot play
 // now. A null result never waits: the caller plays its native animation, and
 // the stage opens for the next transition.
-export function create_shader_transition(root, { backend = "auto", signal }) {
+export function create_shader_transition(
+  root,
+  { backend = "auto", open_gpu, signal },
+) {
   const doc = root.ownerDocument;
   const view = doc.defaultView;
   const stage = stages.get(doc)?.stage;
@@ -134,7 +145,7 @@ export function create_shader_transition(root, { backend = "auto", signal }) {
   // render clears the whole canvas. Give each root its own renderer when two
   // roots must play shader transitions together.
   if (!stage || stage.busy) {
-    warm_shader_transitions(doc, { backend });
+    warm_shader_transitions(doc, { backend, open_gpu });
     return null;
   }
 

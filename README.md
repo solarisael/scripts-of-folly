@@ -101,5 +101,6 @@ Without `travel`, each crumb drifts in its own direction until it is gone.
 The crumbs do not go out of an ancestor that clips its overflow.
 A transition never waits for its shader.
 Until the shader is open, a transition plays a native animation and opens the shader for the next one.
-Call `warm_pretext_transitions()` when the page is idle to open the shader before the first transition.
+Call `warm_pretext_transitions()` to open the shader before the first transition.
+A host with its own GPU seam passes it as `open_gpu` to `warm_pretext_transitions()` and `transition_pretext_content()`.
 One shader transition plays at a time in a document; a second one plays the native animation.

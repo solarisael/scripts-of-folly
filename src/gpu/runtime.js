@@ -49,7 +49,9 @@ function is_element(value) {
 function is_internal_node(value) {
   return (
     is_element(value) &&
-    (value.matches?.(".folly-gpu-canvas, .folly-gpu-presenter") ||
+    (value.matches?.(
+      ".folly-gpu-canvas, .folly-gpu-presenter, [data-folly-transition]",
+    ) ||
       value.hasAttribute(CAPTURE_ATTRIBUTE) ||
       value.hasAttribute("data-folly-probe"))
   );

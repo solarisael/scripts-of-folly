@@ -268,6 +268,7 @@ export const transition_pretext_content = async (
 
       shader = create_shader_transition(root, {
         backend: options.backend ?? "auto",
+        open_gpu: options.open_gpu,
         signal: controller.signal,
       });
     }
