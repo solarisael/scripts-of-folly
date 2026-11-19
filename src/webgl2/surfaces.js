@@ -1,10 +1,10 @@
 // Targets, surfaces and frame for the WebGL2 leg.
 //
 // A surface renders into its own framebuffer. After the frame callback
-// returns, frame() presents each touched surface in pass order: blit the
-// surface (flipped) into the top left corner of the hidden canvas, then copy
-// that corner into the surface canvas with a 2d drawImage. A surface canvas
-// must not hold another context already.
+// returns, frame() presents the touched surfaces together: blit each surface
+// (flipped) into its own rows of the hidden canvas, take the hidden canvas as
+// one bitmap, then copy each surface from the bitmap with a 2d drawImage. A
+// surface canvas must not hold another context already.
 
 import { allocate_texture, create_texture } from "./textures.js";
 import { encode } from "./programs.js";
@@ -68,37 +68,76 @@ export const target = (gpu, options) => {
 // With a backbuffer of the size of each surface, two surfaces of different
 // sizes cost two allocations on each present. In a window on a 240 Hz
 // display that held a page at 24 to 37 frames in a second.
-const open_presenter = (gpu, canvas) => {
-  const { gl } = gpu;
-  const hidden = gpu.canvas;
+//
+// The surfaces of one frame leave the hidden canvas as one bitmap.
+// transferToImageBitmap() gives the backbuffer away with no copy. A 2d
+// drawImage from the hidden canvas itself is not safe. On a Radeon RX 9070 XT
+// with Mesa, a fog surface of 3425 x 849 pixels at 30 frames in a second
+// stopped the GPU with a page fault after 5 to 80 seconds. The probable cause
+// is one copy of the full backbuffer for each call.
+const open_presenter = (canvas) => {
   const context = canvas.getContext("2d");
   if (!context) {
     throw new Error("The surface canvas already holds another context.");
   }
-  return (surface) => {
+  return context;
+};
+
+// The surfaces of one frame go below each other in the hidden canvas. A page
+// is one hidden canvas of surfaces; it stays below this number of rows unless
+// one surface is taller.
+const PAGE_ROWS = 4096;
+
+const pages_of = (surfaces) => {
+  const pages = [];
+  let page = null;
+  for (const surface of surfaces) {
     const [width, height] = surface.size;
-    if (hidden.width < width) hidden.width = width;
-    if (hidden.height < height) hidden.height = height;
-    // The first row of a canvas is the top row of the backbuffer.
-    const top = hidden.height;
+    if (!page || page.height + height > PAGE_ROWS) {
+      page = { width: 0, height: 0, rows: [] };
+      pages.push(page);
+    }
+    page.rows.push({ surface, top: page.height, width, height });
+    page.width = Math.max(page.width, width);
+    page.height += height;
+  }
+  return pages;
+};
+
+const present = (gpu, surfaces) => {
+  const { gl, canvas: hidden } = gpu;
+  if (gl.isContextLost()) return;
+  for (const page of pages_of(surfaces)) {
+    if (hidden.width < page.width) hidden.width = page.width;
+    if (hidden.height < page.height) hidden.height = page.height;
     gl.colorMask(true, true, true, true);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, surface.framebuffer);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-    gl.blitFramebuffer(
-      0,
-      0,
-      width,
-      height,
-      0,
-      top,
-      width,
-      top - height,
-      gl.COLOR_BUFFER_BIT,
-      gl.NEAREST,
-    );
-    context.globalCompositeOperation = "copy";
-    context.drawImage(hidden, 0, 0, width, height, 0, 0, width, height);
-  };
+    for (const { surface, top, width, height } of page.rows) {
+      // The first row of a canvas is the top row of the backbuffer.
+      const first = hidden.height - top;
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, surface.framebuffer);
+      gl.blitFramebuffer(
+        0,
+        0,
+        width,
+        height,
+        0,
+        first,
+        width,
+        first - height,
+        gl.COLOR_BUFFER_BIT,
+        gl.NEAREST,
+      );
+    }
+    // An HTML canvas has no transferToImageBitmap; it is its own image.
+    const image = hidden.transferToImageBitmap?.() ?? hidden;
+    for (const { surface, top, width, height } of page.rows) {
+      const { context } = gpu.surfaces.get(surface);
+      context.globalCompositeOperation = "copy";
+      context.drawImage(image, 0, top, width, height, 0, 0, width, height);
+    }
+    image.close?.();
+  }
 };
 
 const surface_dpr = (dpr) => {
@@ -119,7 +158,7 @@ export const surface = (gpu, canvas, options = {}) => {
     options.label,
     options.clearColor,
   );
-  const present = open_presenter(gpu, canvas);
+  const context = open_presenter(canvas);
   const listeners = new Set();
   const resize_storage = framebuffer_target.resize;
   const sync_canvas = ([width, height]) => {
@@ -163,7 +202,7 @@ export const surface = (gpu, canvas, options = {}) => {
     ]);
   };
   sync_canvas(surface.size);
-  gpu.surfaces.set(surface, { present, apply_auto_resize });
+  gpu.surfaces.set(surface, { context, apply_auto_resize });
   return surface;
 };
 
@@ -220,6 +259,9 @@ export const frame = (gpu, body) => {
     },
   };
   body(current);
-  for (const live of touched) gpu.surfaces.get(live)?.present(live);
+  present(
+    gpu,
+    [...touched].filter((live) => gpu.surfaces.has(live)),
+  );
   return current;
 };
