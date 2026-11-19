@@ -220,7 +220,22 @@ export function install_gpu_effects({
     }
   }
 
+  // Prepares `target` again. The capture reads the DOM when this call starts.
+  // A mark that comes during the GPU work is newer than the capture, so it
+  // stays for the next refresh. A target that got no new item stays marked.
   async function prepare_target(target, names, token) {
+    const was_dirty = dirty_targets.delete(target);
+    let prepared = false;
+    try {
+      prepared = await capture_target(target, names, token);
+    } finally {
+      if (!prepared && was_dirty) dirty_targets.add(target);
+    }
+  }
+
+  // True when `target` has its final state for this capture: a new item, or
+  // no item because it has no ink.
+  async function capture_target(target, names, token) {
     const panel = is_panel_target(names);
     const previous = items.get(target);
     if (!previous) restore_target(target);
@@ -244,15 +259,14 @@ export function install_gpu_effects({
     if (!panel && !captured) {
       dispose_item(target);
       restore_target(target);
-      dirty_targets.delete(target);
-      return;
+      return true;
     }
     if (
       !lifecycle.is_alive(token) ||
       !lifecycle.renderer ||
       !element_is_in_root(target, root)
     )
-      return;
+      return false;
 
     const parameter_sets = names.map((name) =>
       read_effect_parameters(effect_owner(target, name), name, captured),
@@ -267,7 +281,7 @@ export function install_gpu_effects({
         panel ? "panel" : "text",
       );
     } catch (error) {
-      if (!lifecycle.is_alive(token)) return null;
+      if (!lifecycle.is_alive(token)) return false;
       const backend_error =
         error instanceof Error
           ? error
@@ -278,7 +292,7 @@ export function install_gpu_effects({
 
     if (!handle || !lifecycle.is_alive(token) || !lifecycle.renderer) {
       handle?.dispose?.();
-      return;
+      return false;
     }
 
     const rect = target.getBoundingClientRect();
@@ -295,24 +309,27 @@ export function install_gpu_effects({
       await frame.drawing;
       if (!lifecycle.is_alive(token) || items.get(target) !== previous) {
         handle.dispose?.();
-        return;
+        return false;
       }
       item.presentation = previous.presentation;
       previous.presentation = null;
       previous.handle?.dispose?.();
     } else {
+      // The old item goes, and the mark of a newer change stays.
+      const marked = dirty_targets.has(target);
       dispose_item(target);
+      if (marked) dirty_targets.add(target);
       item.presentation = create_presentation(target, item.width, item.height);
     }
     if (!item.presentation) {
       handle.dispose?.();
-      return;
+      return false;
     }
     items.set(target, item);
     if (!previous) mark_owners_above(target);
     resize_observer?.observe(target);
-    dirty_targets.delete(target);
     frame.invalidate();
+    return true;
   }
 
   async function refresh_targets() {
