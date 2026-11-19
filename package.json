@@ -8,6 +8,7 @@
     "check:text-shader": "bun scripts/check_text_shader.js",
     "glsl:build": "bun scripts/build_glsl.js",
     "glsl:check": "bun scripts/build_glsl.js --check",
+    "gpu:compare": "bun scripts/gpu_compare.js",
     "test": "bun test"
   },
   "dependencies": {
@@ -15,7 +16,8 @@
     "vgpu": "^0.5.0"
   },
   "devDependencies": {
-    "@vgpu/wgsl-std": "^0.5.0"
+    "@vgpu/wgsl-std": "^0.5.0",
+    "puppeteer-core": "25.16.0"
   },
   "exports": {
     ".": "./src/js/api.js",

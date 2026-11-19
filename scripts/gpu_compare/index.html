@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>folly harness</title>
+    <style>
+      body { margin: 0; background: #111; color: #ddd; font: 20px/1.5 serif; }
+      main { padding: 40px; width: 700px; }
+    </style>
+  </head>
+  <body>
+    <main id="page">
+      <p>Plain <span id="a" class="fx-glow">glowing words</span> and <span id="b" class="fx-rainbow">rainbow words</span>.</p>
+      <p id="c" class="fx-shadow">A shadow paragraph with a <em id="d" class="fx-wiggle">nested wiggle</em> inside it and more words after it to wrap over a second line of the paragraph.</p>
+      <p><span id="e" data-text-fx="neon" data-text-fx-color="#f0f">neon data attr</span></p>
+      <div id="clip" style="overflow:hidden;height:30px"><div style="margin-top:60px"><span id="f" class="fx-glow">clipped away</span></div></div>
+      <p id="outside">outside text</p>
+      <div style="height: 1500px"></div>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

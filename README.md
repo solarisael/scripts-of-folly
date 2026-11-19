@@ -48,6 +48,24 @@ Without timestamps, every effect stays at full quality.
 `budget.report()` gives the level, measured cost, and part of each visible effect.
 `budget.tune({ frame_share, shares })` changes the numbers while the page runs.
 
+## Checks for a change to the GPU text runtime
+
+Run `bun run test` for the unit tests.
+
+Run `bun run gpu:compare --before <revision>` to compare this tree with an earlier commit in a real browser.
+The script builds one test page from each tree.
+It does the same steps on each page: text changes, style changes, new and removed effects, a lost GPU, `refresh()`, and `dispose()`.
+After each step it compares the state and the picture of each effect.
+
+Give the script a browser.
+`--executable <path>` starts a Chromium browser with software WebGL2.
+`--browser <url>` uses a browser that already runs, for example one with WebGPU on another machine.
+That browser must load the page from its own `127.0.0.1`, so forward port 4399 to it.
+
+`--stale <rounds>` counts the captures that are out of date after a late style change.
+`--bench <rounds>` gives the time of a full recapture and the longest gap between two frames.
+The head of `scripts/gpu_compare.js` lists all options.
+
 ## Page transitions
 
 Import page transitions from `scripts-of-folly/transitions`.
