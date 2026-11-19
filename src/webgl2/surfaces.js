@@ -1,12 +1,10 @@
 // Targets, surfaces and frame for the WebGL2 leg.
 //
 // A surface renders into its own framebuffer. After the frame callback
-// returns, frame() presents each touched surface in pass order: blit surface
-// A (flipped) into the hidden canvas, transferToImageBitmap into A's
-// "bitmaprenderer", then blit B and transfer B. The transfer empties the
-// hidden backbuffer, so never blit two surfaces before one transfer. Without
-// OffscreenCanvas or bitmaprenderer the surface canvas gets a 2d drawImage
-// copy instead. A surface canvas must not hold another context already.
+// returns, frame() presents each touched surface in pass order: blit the
+// surface (flipped) into the top left corner of the hidden canvas, then copy
+// that corner into the surface canvas with a 2d drawImage. A surface canvas
+// must not hold another context already.
 
 import { allocate_texture, create_texture } from "./textures.js";
 import { encode } from "./programs.js";
@@ -65,23 +63,24 @@ export const target = (gpu, options) => {
   return create_framebuffer_target(gpu, size, format, label, clearColor);
 };
 
-// ponytail: the hidden backbuffer reallocates whenever consecutive surfaces
-// differ in size; upgrade when a two-surface frame shows that in a profile.
+// One hidden backbuffer serves every surface of the context, and it only
+// grows. Each change of its size makes the browser allocate a new backbuffer.
+// With a backbuffer of the size of each surface, two surfaces of different
+// sizes cost two allocations on each present. In a window on a 240 Hz
+// display that held a page at 24 to 37 frames in a second.
 const open_presenter = (gpu, canvas) => {
   const { gl } = gpu;
   const hidden = gpu.canvas;
-  const bitmap =
-    typeof hidden.transferToImageBitmap === "function"
-      ? canvas.getContext("bitmaprenderer")
-      : null;
-  const context = bitmap ? null : canvas.getContext("2d");
-  if (!bitmap && !context) {
+  const context = canvas.getContext("2d");
+  if (!context) {
     throw new Error("The surface canvas already holds another context.");
   }
   return (surface) => {
     const [width, height] = surface.size;
-    if (hidden.width !== width) hidden.width = width;
-    if (hidden.height !== height) hidden.height = height;
+    if (hidden.width < width) hidden.width = width;
+    if (hidden.height < height) hidden.height = height;
+    // The first row of a canvas is the top row of the backbuffer.
+    const top = hidden.height;
     gl.colorMask(true, true, true, true);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, surface.framebuffer);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
@@ -91,18 +90,14 @@ const open_presenter = (gpu, canvas) => {
       width,
       height,
       0,
-      height,
+      top,
       width,
-      0,
+      top - height,
       gl.COLOR_BUFFER_BIT,
       gl.NEAREST,
     );
-    if (bitmap) {
-      bitmap.transferFromImageBitmap(hidden.transferToImageBitmap());
-      return;
-    }
     context.globalCompositeOperation = "copy";
-    context.drawImage(hidden, 0, 0);
+    context.drawImage(hidden, 0, 0, width, height, 0, 0, width, height);
   };
 };
 
