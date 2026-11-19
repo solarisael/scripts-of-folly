@@ -22,6 +22,7 @@ import {
   dispose_presentation,
   effect_dpr,
   hide_presentation,
+  presentation_is_attached,
 } from "./presentation.js";
 import {
   effect_owner,
@@ -305,7 +306,9 @@ export function install_gpu_effects({
       height: captured?.height ?? rect.height,
       presentation: null,
     };
-    if (previous?.kind === item.kind && previous.presentation) {
+    // A DOM morph can keep a target and remove its presenter. That presenter
+    // shows nothing, so the item gets a new one.
+    if (previous?.kind === item.kind && presentation_is_attached(previous)) {
       await frame.drawing;
       if (!lifecycle.is_alive(token) || items.get(target) !== previous) {
         handle.dispose?.();

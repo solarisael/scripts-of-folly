@@ -56,6 +56,12 @@ export function dispose_presentation(item) {
   item.presentation = null;
 }
 
+// False when the item has no presenter, or the page removed the presenter
+// from its target.
+export function presentation_is_attached(item) {
+  return item.presentation?.canvas.parentNode === item.target;
+}
+
 export function hide_presentation(item) {
   if (item?.presentation) item.presentation.canvas.style.visibility = "hidden";
 }
