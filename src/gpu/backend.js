@@ -275,6 +275,34 @@ export async function create_gpu_backend(
     return handle.span;
   };
 
+  // A draw reads the shader text when it is made. For this shader that takes
+  // about 20 ms on the main thread. An item needs its own draw only while it
+  // lives. So a disposed handle gives its draw back, and the next capture
+  // takes it.
+  const MAX_IDLE_DRAWS = 32;
+  const idle_draws = new Map();
+  const make_draw = (kind) =>
+    api.draw(gpu, {
+      label: `folly-vgpu.${kind}`,
+      shader: SHADER,
+      vertices: 6,
+      blend: "alpha",
+      depth: false,
+    });
+  const take_draw = (kind) => idle_draws.get(kind)?.pop() ?? make_draw(kind);
+  const give_draw = (kind, drawable) => {
+    let idle = idle_draws.get(kind);
+    if (!idle) idle_draws.set(kind, (idle = []));
+    if (disposed || idle.length >= MAX_IDLE_DRAWS) drawable.dispose?.();
+    else idle.push(drawable);
+  };
+  // Makes one spare draw for text effects when there is none. A host calls
+  // this while the page is idle, so that a new capture does not wait for it.
+  const warm = () => {
+    if (disposed || !is_alive()) return;
+    if (!idle_draws.get("text")?.length) give_draw("text", make_draw("text"));
+  };
+
   // `scale` (0 to 1) renders the surface with fewer pixels than the dpr asks.
   const resize = (width, height, dpr = 1, scale = 1) => {
     if (disposed) return;
@@ -357,17 +385,11 @@ export async function create_gpu_backend(
         parameter_sets,
       );
 
-      drawable = api.draw(gpu, {
-        label: `folly-vgpu.${kind}`,
-        shader: SHADER,
-        vertices: 6,
-        blend: "alpha",
-        depth: false,
-        set: {
-          glyph: texture,
-          soft_glyph: soft_texture,
-          glyph_sampler,
-        },
+      drawable = take_draw(kind);
+      drawable.set({
+        glyph: texture,
+        soft_glyph: soft_texture,
+        glyph_sampler,
       });
 
       await copy_capture(gpu, texture, captured, upload_width, upload_height);
@@ -427,7 +449,7 @@ export async function create_gpu_backend(
         handles.delete(this);
         this.texture.dispose();
         if (this.soft_texture !== this.texture) this.soft_texture.dispose();
-        this.drawable.dispose?.();
+        give_draw(this.kind, this.drawable);
         if (this.span_name) timed_handles.delete(this.span_name);
       },
     };
@@ -480,6 +502,9 @@ export async function create_gpu_backend(
     disposed = true;
     for (const handle of handles) handle.dispose();
     handles.clear();
+    for (const idle of idle_draws.values()) {
+      for (const drawable of idle.splice(0)) drawable.dispose?.();
+    }
     unsubscribe_error?.();
     unsubscribe_uncaptured();
     unsubscribe_timer();
@@ -496,6 +521,7 @@ export async function create_gpu_backend(
     resize,
     prepare,
     render,
+    warm,
     dispose,
   };
 }

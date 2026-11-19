@@ -387,9 +387,28 @@ export function install_gpu_effects({
           document_value.dispatchEvent(
             new view.CustomEvent("folly:gpu-settled"),
           );
+          warm_when_idle();
         }
       }
     });
+  }
+
+  // Asks the renderer for a spare draw while the page is idle. The next new
+  // capture then does not wait for the shader text.
+  function warm_when_idle() {
+    const warm = () => {
+      if (lifecycle.dead) return;
+      try {
+        lifecycle.renderer?.warm?.();
+      } catch (error) {
+        // A spare is optional: the next capture makes its own draw, and a
+        // broken renderer fails there with the full recovery.
+        console.warn("[Scripts of Folly] No spare GPU draw.", error);
+      }
+    };
+    if (typeof view.requestIdleCallback === "function")
+      view.requestIdleCallback(warm, { timeout: 2000 });
+    else view.setTimeout(warm, 200);
   }
 
   function handle_mutations(records) {
