@@ -441,12 +441,17 @@ const origin_of = (element, view) => {
 // htmx:historyRestore right after it asks for the swap, before the view
 // transition runs it. The binding holds that event and sends it again
 // after the swap, so its listeners see the restored page.
+// Set animate_history to false to leave history restoration immediate.
 const RESTORE_EVENTS = ["htmx:historyRestore", "htmx:history-restore"];
 
 export function bind_htmx_navigation(
   htmx,
   transition,
-  { target, document: document_value = globalThis.document } = {},
+  {
+    target,
+    document: document_value = globalThis.document,
+    animate_history = true,
+  } = {},
 ) {
   if (htmx[HTMX_BOUND]) return htmx[HTMX_BOUND];
 
@@ -473,6 +478,7 @@ export function bind_htmx_navigation(
   navigation?.addEventListener("currententrychange", on_entry_change);
 
   const on_restore_hit = (event) => {
+    if (!animate_history) return;
     const detail = event.detail;
     if (!detail?.historyElt?.matches?.(target)) return;
     if (transition.mode() === "off") return;

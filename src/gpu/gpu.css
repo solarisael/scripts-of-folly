@@ -44,6 +44,11 @@
   transform: none !important;
 }
 
+/* Range bounds must measure native ink, not the previous padded GPU copy. */
+[data-folly-capture] .folly-gpu-presenter {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .folly-gpu-canvas {
     animation: none !important;

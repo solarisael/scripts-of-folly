@@ -24,6 +24,11 @@ const SHADERS = [
     name: "BANNER_WGSL",
     output: "src/vision/glsl.generated.js",
   },
+  {
+    source: "src/scene/wgsl.js",
+    name: "SCENE_WGSL",
+    output: "src/scene/glsl.generated.js",
+  },
 ];
 
 const run_naga = async (input, output, entry_point) => {

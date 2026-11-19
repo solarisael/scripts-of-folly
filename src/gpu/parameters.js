@@ -26,6 +26,20 @@ function css_multiplier(style, property_name) {
   return Number.isFinite(value) ? value : 1;
 }
 
+
+export function read_visual_intensity(style, effect_name) {
+  const ceiling = Number.parseFloat(
+    style.getPropertyValue(`--site_fx_${effect_name}_max_intensity`) ||
+      style.getPropertyValue("--site_fx_max_intensity"),
+  );
+  const intensity =
+    channel_value(style, effect_name, "intensity") *
+    css_multiplier(style, "--site_fx_glow_mult");
+
+  return Number.isFinite(ceiling)
+    ? Math.min(intensity, Math.max(0, ceiling))
+    : intensity;
+}
 function color_probe(element, value) {
   const document_value = element.ownerDocument;
   const probe = document_value.createElement("span");
@@ -35,7 +49,8 @@ function color_probe(element, value) {
     "visibility:hidden",
     "width:1px",
     "height:1px",
-    `color:${value}`,
+    // Ready effects hide descendant ink with !important.
+    `color:${value} !important`,
   ].join(";");
   element.append(probe);
   try {
@@ -68,8 +83,7 @@ function color_value(element, value, fallback_value = null) {
 
 export function read_effect_parameters(element, effect_name, captured) {
   const style = element.ownerDocument.defaultView.getComputedStyle(element);
-  const intensity = channel_value(style, effect_name, "intensity");
-  const glow_multiplier = css_multiplier(style, "--site_fx_glow_mult");
+  const intensity = read_visual_intensity(style, effect_name);
   const motion_multiplier = css_multiplier(style, "--site_fx_motion_mult");
   const motion =
     channel_value(style, effect_name, "motion") * motion_multiplier;
@@ -78,9 +92,11 @@ export function read_effect_parameters(element, effect_name, captured) {
     .getPropertyValue(`--text_fx_${effect_name}_color`)
     .trim();
   const marker_color = style.getPropertyValue("--text_fx_marker_color").trim();
+  const default_color = style.getPropertyValue("--site_fx_color").trim();
   const accent = color_value(
     element,
-    effect_color || marker_color || "var(--site_style_accent, currentColor)",
+    effect_color || marker_color || default_color ||
+      "var(--site_style_accent, currentColor)",
   );
   const base_css = captured?.base_color || style.color || "currentColor";
   const base_color = color_value(
@@ -94,11 +110,11 @@ export function read_effect_parameters(element, effect_name, captured) {
     captured?.font_size ?? (Number.parseFloat(style.fontSize) || 16);
 
   return {
-    intensity: intensity * glow_multiplier,
+    intensity,
     motion,
     speed,
     accent,
-    color_override: Boolean(effect_color || marker_color),
+    color_override: Boolean(effect_color || marker_color || default_color),
     base_color,
     size,
     font_size,

@@ -8,6 +8,7 @@ import {
   TEXT_EFFECTS,
   PANEL_EFFECTS,
 } from "./registry.js";
+import { scene_for } from "../scene/index.js";
 import "./gpu.css";
 
 const TEXT_READY_ATTRIBUTE = "data-folly-gpu-text";
@@ -66,7 +67,9 @@ function create_presentation(target, width, height) {
   if (
     needs_position &&
     [...target.querySelectorAll("*")].some(
-      (descendant) => view.getComputedStyle(descendant).position === "absolute",
+      (descendant) =>
+        !is_internal_node(descendant) &&
+        view.getComputedStyle(descendant).position === "absolute",
     )
   )
     return null;
@@ -140,6 +143,7 @@ function target_is_transitioning(element) {
   return element.closest?.(".sol__pretext_transitioning") != null;
 }
 
+// A panel effect decorates its own box, so descendants do not inherit it.
 function effective_effect_names(element) {
   const lineage = [];
   let current = element;
@@ -150,22 +154,23 @@ function effective_effect_names(element) {
   const names = [];
   for (const owner of lineage) {
     for (const name of element_names(owner)) {
+      if (owner !== element && PANEL_EFFECTS.includes(name)) continue;
       if (!names.includes(name)) names.push(name);
     }
   }
   return names;
 }
 
-function has_nested_effect_owner(element, query_root) {
-  let ancestor = element.parentElement;
-  while (ancestor && ancestor !== query_root) {
-    if (element_names(ancestor).length) return true;
-    ancestor = ancestor.parentElement;
+// Inherited effects keep the parameters and colour of their naming element.
+function effect_owner(element, name) {
+  for (
+    let current = element;
+    is_element(current);
+    current = current.parentElement
+  ) {
+    if (element_names(current).includes(name)) return current;
   }
-  for (const descendant of element.querySelectorAll?.("*") || []) {
-    if (element_names(descendant).length) return true;
-  }
-  return false;
+  return element;
 }
 
 function capture_representable(element) {
@@ -243,14 +248,17 @@ function pack_atlas(entries, dpr) {
 // seam. It returns { kind, api, gpu } like open_gpu in ./renderer.js, the
 // default. `request.timing` asks for GPU timing; webgpu_init_options turns it
 // into vgpu init options.
+// `ignore_mutation(record)` lets an editor exclude nonvisual UI mutations.
 export { webgpu_init_options } from "./open_gpu.js";
 export function install_gpu_effects({
   root = document,
   backend = "auto",
   open_gpu = undefined,
+  ignore_mutation = undefined,
 } = {}) {
   const document_value = root.nodeType === 9 ? root : root.ownerDocument;
   const view = document_value.defaultView || globalThis;
+  const scene = scene_for(document_value);
   const query_root =
     root.nodeType === 9 ? document_value.documentElement : root;
   const items = new Map();
@@ -365,6 +373,7 @@ export function install_gpu_effects({
 
     items.delete(target);
     dirty_targets.delete(target);
+    mark_owners_above(target);
     resize_observer?.unobserve?.(target);
     restore_target(target);
     dispose_presentation(item);
@@ -372,6 +381,23 @@ export function install_gpu_effects({
       item.handle?.dispose?.();
     } catch (error) {
       return error;
+    }
+  }
+
+  // A ready owner hides all of its descendants. It captures every run that a
+  // nested text item does not present, so a failed child stays readable.
+  function owns_text(target, node) {
+    let current = is_element(node) ? node : node.parentElement;
+    while (current && current !== target) {
+      if (items.get(current)?.kind === "text") return false;
+      current = current.parentElement;
+    }
+    return true;
+  }
+
+  function mark_owners_above(target) {
+    for (const owner of items.keys()) {
+      if (owner !== target && owner.contains(target)) dirty_targets.add(owner);
     }
   }
 
@@ -392,7 +418,14 @@ export function install_gpu_effects({
 
   function mark_dirty(target) {
     const owner = find_effect_target(target) || target;
-    if (is_element(owner)) dirty_targets.add(owner);
+    if (is_element(owner)) {
+      dirty_targets.add(owner);
+      // Nested owners share inherited effects and one inline flow.
+      for (const item_target of items.keys()) {
+        if (item_target.contains(owner) || owner.contains(item_target))
+          dirty_targets.add(item_target);
+      }
+    }
     render_dirty = true;
   }
 
@@ -645,6 +678,8 @@ export function install_gpu_effects({
                 full_width,
                 full_height,
               );
+              presentation_canvas.style.width = `${entry.item.width}px`;
+              presentation_canvas.style.height = `${entry.item.height}px`;
               presentation_canvas.style.visibility = "visible";
             }
           }
@@ -780,8 +815,8 @@ export function install_gpu_effects({
 
   async function prepare_target(target, names, token) {
     const panel = is_panel_target(names);
-    dispose_item(target);
-    restore_target(target);
+    const previous = items.get(target);
+    if (!previous) restore_target(target);
 
     let captured = panel ? make_panel_capture(target) : null;
     const soft = !panel && names.some((name) => SOFT_EFFECTS.has(name));
@@ -792,6 +827,7 @@ export function install_gpu_effects({
           dpr: Math.min(1.5, Math.max(1, view.devicePixelRatio || 1)),
           padding: soft || names.includes("rift") ? WIDE_CAPTURE_PADDING : 8,
           soft,
+          owns: (node) => owns_text(target, node),
         });
       } finally {
         target.removeAttribute(CAPTURE_ATTRIBUTE);
@@ -799,6 +835,7 @@ export function install_gpu_effects({
     }
 
     if (!panel && !captured) {
+      dispose_item(target);
       restore_target(target);
       dirty_targets.delete(target);
       return;
@@ -811,7 +848,7 @@ export function install_gpu_effects({
       return;
 
     const parameter_sets = names.map((name) =>
-      read_effect_parameters(target, name, captured),
+      read_effect_parameters(effect_owner(target, name), name, captured),
     );
 
     let handle;
@@ -847,12 +884,25 @@ export function install_gpu_effects({
       height: captured?.height ?? rect.height,
       presentation: null,
     };
-    item.presentation = create_presentation(target, item.width, item.height);
+    if (previous?.kind === item.kind && previous.presentation) {
+      await draw_promise;
+      if (!is_alive(token) || items.get(target) !== previous) {
+        handle.dispose?.();
+        return;
+      }
+      item.presentation = previous.presentation;
+      previous.presentation = null;
+      previous.handle?.dispose?.();
+    } else {
+      dispose_item(target);
+      item.presentation = create_presentation(target, item.width, item.height);
+    }
     if (!item.presentation) {
       handle.dispose?.();
       return;
     }
     items.set(target, item);
+    if (!previous) mark_owners_above(target);
     resize_observer?.observe(target);
     dirty_targets.delete(target);
     render_dirty = true;
@@ -865,18 +915,16 @@ export function install_gpu_effects({
       is_element(query_root) &&
       effective_effect_names(query_root).length &&
       target_is_representable(query_root) &&
-      !target_is_transitioning(query_root) &&
-      !has_nested_effect_owner(query_root, query_root)
+      !target_is_transitioning(query_root)
     )
       targets.push(query_root);
 
     for (const element of query_root.querySelectorAll?.("*") || []) {
       if (
         !is_internal_node(element) &&
-        effective_effect_names(element).length &&
+        element_names(element).length &&
         target_is_representable(element) &&
-        !target_is_transitioning(element) &&
-        !has_nested_effect_owner(element, query_root)
+        !target_is_transitioning(element)
       )
         targets.push(element);
     }
@@ -898,7 +946,8 @@ export function install_gpu_effects({
         dispose_item(target);
     }
 
-    for (const target of targets) {
+    // Nested items settle before their owners capture the remaining ink.
+    for (const target of [...targets].reverse()) {
       const names = effective_effect_names(target);
       const existing = items.get(target);
       const changed =
@@ -955,9 +1004,21 @@ export function install_gpu_effects({
     });
   }
 
+  function mark_affected(node) {
+    const scope = scene.owner(node)?.element;
+    if (!scope) {
+      mark_all_dirty();
+      return;
+    }
+    for (const target of items.keys()) {
+      if (scope.contains(target) || target.contains(scope)) mark_dirty(target);
+    }
+  }
+
   function handle_mutations(records) {
     let changed = false;
     for (const record of records) {
+      if (ignore_mutation?.(record) || scene.ignores_mutation(record)) continue;
       if (record.type === "attributes") {
         if (record.target === canvas || is_internal_node(record.target))
           continue;
@@ -976,14 +1037,15 @@ export function install_gpu_effects({
         ) {
           const effect_target = find_effect_target(record.target);
           if (effect_target) mark_dirty(effect_target);
-          else mark_all_dirty();
+          else mark_affected(record.target);
           changed = true;
         }
       } else if (record.type === "characterData") {
         const effect_target = find_effect_target(record.target);
-        if (effect_target) mark_dirty(effect_target);
-        else mark_all_dirty();
-        changed = true;
+        if (effect_target) {
+          mark_dirty(effect_target);
+          changed = true;
+        }
       } else if (record.type === "childList") {
         const nodes = [...record.addedNodes, ...record.removedNodes];
         if (
@@ -991,7 +1053,13 @@ export function install_gpu_effects({
           (nodes.length > 0 && nodes.every(is_internal_node))
         )
           continue;
-        mark_all_dirty();
+        const effect_target = find_effect_target(record.target);
+        if (effect_target) mark_dirty(effect_target);
+        for (const node of nodes) {
+          for (const target of items.keys()) {
+            if (node.contains(target)) mark_dirty(target);
+          }
+        }
         changed = true;
       }
     }
@@ -1087,8 +1155,8 @@ export function install_gpu_effects({
       }
     });
 
-    add_listener(document_value, "folly:pretext-layout", () => {
-      mark_all_dirty();
+    add_listener(document_value, "folly:pretext-layout", (event) => {
+      mark_affected(event.detail?.element || event.target);
       schedule_refresh();
     });
 

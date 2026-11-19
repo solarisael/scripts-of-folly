@@ -1,3 +1,5 @@
+import { read_visual_intensity } from "../gpu/parameters.js";
+
 const PANEL_SELECTOR = ".sol__block_fx_terminal";
 const TERMINAL_ELEMENT = "folly-terminal";
 const TERMINAL_RUNTIME = Symbol.for("scripts-of-folly.terminal");
@@ -148,12 +150,10 @@ export const create_terminal_runtime = (host, canvas, options = {}) => {
     const canvas_bounds = canvas.getBoundingClientRect();
     const panel_bounds = panel.getBoundingClientRect();
     const style = getComputedStyle(panel);
-    const marker_intensity =
-      Number.parseFloat(
-        style.getPropertyValue("--block_fx_marker_intensity"),
-      ) || 1;
-    const glow_multiplier =
-      Number.parseFloat(style.getPropertyValue("--site_fx_glow_mult")) || 1;
+    const intensity = read_visual_intensity(
+      style,
+      panel.dataset.textFx || "terminal",
+    );
     const scheme = Number.parseFloat(
       style.getPropertyValue("--folly_terminal_scheme"),
     );
@@ -167,7 +167,7 @@ export const create_terminal_runtime = (host, canvas, options = {}) => {
         style.getPropertyValue("--folly_terminal_halo_radius"),
       ) || 0;
     values.frame_radius = Number.parseFloat(style.borderTopLeftRadius) || 0;
-    values.intensity = clamp(marker_intensity * glow_multiplier, 0.2, 2);
+    values.intensity = Math.min(intensity, 2);
     values.motion = clamp(
       Number.parseFloat(style.getPropertyValue("--site_fx_motion_mult")) || 1,
       0.2,
@@ -345,7 +345,7 @@ const define_terminal_element = () => {
           canvas.setAttribute("aria-hidden", "true");
           this.prepend(canvas);
         }
-        create_terminal_runtime(this, canvas);
+        create_terminal_runtime(this, canvas, this.terminalOptions);
       }
 
       disconnectedCallback() {
@@ -361,7 +361,7 @@ const terminal_panels_in = (root) => {
   return panels;
 };
 
-export const hydrate_terminal_effects = (root = document) => {
+export const hydrate_terminal_effects = (root = document, options = {}) => {
   define_terminal_element();
 
   for (const panel of terminal_panels_in(root)) {
@@ -372,6 +372,7 @@ export const hydrate_terminal_effects = (root = document) => {
 
     const next_sibling = panel.nextSibling;
     const host = document.createElement(TERMINAL_ELEMENT);
+    host.terminalOptions = options;
     host.append(panel);
     parent.insertBefore(host, next_sibling);
   }

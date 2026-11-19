@@ -1,5 +1,5 @@
 // Generated from terminal.wgsl by bun run build:terminal-shader.
-const terminal_source = String.raw`struct _vgsl_310ffc77__TerminalWindow {
+const terminal_source = String.raw`struct _vgsl_ac53a6ee__TerminalWindow {
   resolution: vec2f,
   time: f32,
   intensity: f32,
@@ -12,18 +12,18 @@ const terminal_source = String.raw`struct _vgsl_310ffc77__TerminalWindow {
   frame_radius: f32,
 }
 
-struct _vgsl_310ffc77__AtlasEntry {
+struct _vgsl_ac53a6ee__AtlasEntry {
   uv: vec4f,
   bounds: vec4f,
   metrics: vec4f,
 }
 
-@group(0) @binding(0) var<uniform> window: _vgsl_310ffc77__TerminalWindow;
-@group(0) @binding(1) var<storage, read> entries: array<_vgsl_310ffc77__AtlasEntry>;
+@group(0) @binding(0) var<uniform> window: _vgsl_ac53a6ee__TerminalWindow;
+@group(0) @binding(1) var<storage, read> entries: array<_vgsl_ac53a6ee__AtlasEntry>;
 @group(0) @binding(2) var glyph_texture: texture_2d<f32>;
 @group(0) @binding(3) var glyph_sampler: sampler;
 
-fn _vgsl_310ffc77__rounded_box_distance(point: vec2f, half_size: vec2f, radius: f32) -> f32 {
+fn _vgsl_ac53a6ee__rounded_box_distance(point: vec2f, half_size: vec2f, radius: f32) -> f32 {
   let corner = clamp(radius, 0.0, min(half_size.x, half_size.y));
   let offset = abs(point) - half_size + vec2f(corner);
   return length(max(offset, vec2f(0.0)))
@@ -31,7 +31,7 @@ fn _vgsl_310ffc77__rounded_box_distance(point: vec2f, half_size: vec2f, radius: 
     - corner;
 }
 
-fn _vgsl_310ffc77__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
+fn _vgsl_ac53a6ee__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
   let placements = array<vec4f, 12>(
     vec4f(0.12, 0.24, 0.0, 0.03),
     vec4f(0.28, 0.24, 7.0, 0.21),
@@ -80,7 +80,7 @@ fn _vgsl_310ffc77__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
   let frame_size = max(frame_max - frame_min, vec2f(1.0));
   let frame_center = (frame_min + frame_max) * 0.5;
   let frame_half_size = frame_size * 0.5;
-  let box_distance = _vgsl_310ffc77__rounded_box_distance(
+  let box_distance = _vgsl_ac53a6ee__rounded_box_distance(
     pixels - frame_center,
     frame_half_size,
     window.frame_radius
@@ -88,7 +88,7 @@ fn _vgsl_310ffc77__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
   let inside = 1.0 - smoothstep(-0.5, 0.5, box_distance);
   let inside_edge_distance = max(-box_distance, 0.0);
   let hardlight_half_size = frame_half_size + vec2f(window.halo_radius);
-  let hardlight_distance = _vgsl_310ffc77__rounded_box_distance(
+  let hardlight_distance = _vgsl_ac53a6ee__rounded_box_distance(
     pixels - frame_center,
     hardlight_half_size,
     window.halo_radius
@@ -117,13 +117,13 @@ fn _vgsl_310ffc77__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
   let aspect = frame_size.x / max(frame_size.y, 1.0);
   let point = (content_uv - 0.5) * vec2f(aspect, 1.0);
   let drift = window.time * window.motion;
-  let fine_noise = _vgsl_7d56eac9__fbmSimplex3d(
+  let fine_noise = _vgsl_bb550d71__fbmSimplex3d(
     vec3f(point * 5.1 + vec2f(0.0, window.seed * 13.0), -drift * 0.035),
     3,
     2.0,
     0.5
   );
-  let outer_noise = _vgsl_7d56eac9__fbmSimplex3d(
+  let outer_noise = _vgsl_bb550d71__fbmSimplex3d(
     vec3f(point * 2.0 + vec2f(window.seed * 7.0, 3.1), drift * 0.06),
     4,
     2.0,
@@ -166,7 +166,7 @@ fn _vgsl_310ffc77__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
   let black_signal = vec3f(0.012, 0.014, 0.016);
   let surface = mix(dark_surface, light_surface, window.scheme);
   let signal_color = mix(gold_signal, black_signal, window.scheme);
-  let rune_signal = _vgsl_310ffc77__terminal_runes(content_pixels, frame_size);
+  let rune_signal = _vgsl_ac53a6ee__terminal_runes(content_pixels, frame_size);
 
   let detail = clamp(
     scan_line * 0.07
@@ -221,8 +221,8 @@ fn _vgsl_310ffc77__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
   let outside_color = fog_color;
   let inside_alpha = inside * 0.98;
   let alpha = inside_alpha + outside_alpha * (1.0 - inside_alpha);
-  let inside_display = _vgsl_7a81f1a5__linearToSrgb3(inside_color);
-  let outside_display = _vgsl_7a81f1a5__linearToSrgb3(outside_color);
+  let inside_display = _vgsl_fb1355ed__linearToSrgb3(inside_color);
+  let outside_display = _vgsl_fb1355ed__linearToSrgb3(outside_color);
   let premultiplied = inside_display * inside_alpha
     + outside_display * outside_alpha * (1.0 - inside_alpha);
 
@@ -239,15 +239,15 @@ fn _vgsl_310ffc77__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
 
  
 
- fn _vgsl_7a81f1a5__linearToSrgb(value: f32) -> f32 {
+ fn _vgsl_fb1355ed__linearToSrgb(value: f32) -> f32 {
   if (value <= 0.0031308) {
     return value * 12.92;
   }
   return 1.055 * pow(value, 1.0 / 2.4) - 0.055;
 }
 
- fn _vgsl_7a81f1a5__linearToSrgb3(value: vec3f) -> vec3f {
-  return vec3f(_vgsl_7a81f1a5__linearToSrgb(value.r), _vgsl_7a81f1a5__linearToSrgb(value.g), _vgsl_7a81f1a5__linearToSrgb(value.b));
+ fn _vgsl_fb1355ed__linearToSrgb3(value: vec3f) -> vec3f {
+  return vec3f(_vgsl_fb1355ed__linearToSrgb(value.r), _vgsl_fb1355ed__linearToSrgb(value.g), _vgsl_fb1355ed__linearToSrgb(value.b));
 }
 
  
@@ -277,10 +277,10 @@ fn _vgsl_310ffc77__terminal_runes(pixels: vec2f, size: vec2f) -> f32 {
       // (sqrt(3) - 1) / 2
       // (3 - sqrt(3)) / 6
  // 2 * simplexG2
-const _vgsl_7d56eac9__simplexF3: f32 = 0.3333333333333333;       // 1 / 3
-const _vgsl_7d56eac9__simplexG3: f32 = 0.16666666666666666;      // 1 / 6
-const _vgsl_7d56eac9__simplexG3Twice: f32 = 0.3333333333333333;  // 2 * simplexG3
-const _vgsl_7d56eac9__simplexG3Thrice: f32 = 0.5;                // 3 * simplexG3
+const _vgsl_bb550d71__simplexF3: f32 = 0.3333333333333333;       // 1 / 3
+const _vgsl_bb550d71__simplexG3: f32 = 0.16666666666666666;      // 1 / 6
+const _vgsl_bb550d71__simplexG3Twice: f32 = 0.3333333333333333;  // 2 * simplexG3
+const _vgsl_bb550d71__simplexG3Thrice: f32 = 0.5;                // 3 * simplexG3
 
 // Kernel radius^2 is 0.5, NOT the widespread 0.6 (Gustavson/webgl-noise canonical value):
 // 0.6 measurably produces C0 cracks (max |dv| ~4.6e-5 to 9.5e-5 vs ~2.9e-8 to 4.8e-8 at 0.5,
@@ -295,11 +295,11 @@ const _vgsl_7d56eac9__simplexG3Thrice: f32 = 0.5;                // 3 * simplexG
 // t = 0.1, and dropping it is a discontinuity.
 
 
-fn _vgsl_7d56eac9__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
+fn _vgsl_bb550d71__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
   let t = 0.5 - dot(d, d);
   if (t <= 0.0) { return 0.0; }
   let t2 = t * t;
-  return t2 * t2 * _vgsl_51c0541e__gradDot3(_vgsl_51c0541e__gradIndex3(cell), d);
+  return t2 * t2 * _vgsl_5531df46__gradDot3(_vgsl_5531df46__gradIndex3(cell), d);
 }
 
 // 2D simplex: 3 corners of a triangle in the sheared lattice. \`vec2i(base)\` (never
@@ -310,11 +310,11 @@ fn _vgsl_7d56eac9__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
 
 // 3D simplex: 4 corners of a tetrahedron, i.e. half the 8 corners perlin3d needs (4 pcg3d hashes
 // against Perlin's 8).
- fn _vgsl_7d56eac9__simplex3d(position: vec3f) -> f32 {
-  let skew = (position.x + position.y + position.z) * _vgsl_7d56eac9__simplexF3;
+ fn _vgsl_bb550d71__simplex3d(position: vec3f) -> f32 {
+  let skew = (position.x + position.y + position.z) * _vgsl_bb550d71__simplexF3;
   let base = floor(position + vec3f(skew));
   let cell = vec3i(base);
-  let unskew = (base.x + base.y + base.z) * _vgsl_7d56eac9__simplexG3;
+  let unskew = (base.x + base.y + base.z) * _vgsl_bb550d71__simplexG3;
   let d0 = position - (base - vec3f(unskew));
 
   // Traversal order = ranking of d0's components (the classic error-prone step). The six branches
@@ -335,13 +335,13 @@ fn _vgsl_7d56eac9__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
     else                   { o1 = vec3f(0.0, 1.0, 0.0); o2 = vec3f(1.0, 1.0, 0.0); } // y > x >= z
   }
 
-  let d1 = d0 - o1 + vec3f(_vgsl_7d56eac9__simplexG3);
-  let d2 = d0 - o2 + vec3f(_vgsl_7d56eac9__simplexG3Twice);
-  let d3 = d0 - vec3f(1.0) + vec3f(_vgsl_7d56eac9__simplexG3Thrice);
-  var total = _vgsl_7d56eac9__simplexKernel3(cell, d0);
-  total = total + _vgsl_7d56eac9__simplexKernel3(cell + vec3i(o1), d1);
-  total = total + _vgsl_7d56eac9__simplexKernel3(cell + vec3i(o2), d2);
-  total = total + _vgsl_7d56eac9__simplexKernel3(cell + vec3i(1, 1, 1), d3);
+  let d1 = d0 - o1 + vec3f(_vgsl_bb550d71__simplexG3);
+  let d2 = d0 - o2 + vec3f(_vgsl_bb550d71__simplexG3Twice);
+  let d3 = d0 - vec3f(1.0) + vec3f(_vgsl_bb550d71__simplexG3Thrice);
+  var total = _vgsl_bb550d71__simplexKernel3(cell, d0);
+  total = total + _vgsl_bb550d71__simplexKernel3(cell + vec3i(o1), d1);
+  total = total + _vgsl_bb550d71__simplexKernel3(cell + vec3i(o2), d2);
+  total = total + _vgsl_bb550d71__simplexKernel3(cell + vec3i(1, 1, 1), d3);
   // raw sup = 0.0130071572, so 76.0 < 1/sup: abs(value) <= 0.98854, never clipped.
   return 76.0 * total;
 }
@@ -354,7 +354,7 @@ fn _vgsl_7d56eac9__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
 // \`fbmSimplex2d(p, 1, lacunarity, gain)\` is exactly \`simplex2d(p)\`.
  
 
- fn _vgsl_7d56eac9__fbmSimplex3d(position: vec3f, octaves: i32, lacunarity: f32, gain: f32) -> f32 {
+ fn _vgsl_bb550d71__fbmSimplex3d(position: vec3f, octaves: i32, lacunarity: f32, gain: f32) -> f32 {
   let count = clamp(octaves, 1, 16);
   let decay = clamp(gain, 0.0, 1.0);
   var sum = 0.0;
@@ -362,7 +362,7 @@ fn _vgsl_7d56eac9__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
   var weight = 0.0;
   var sample = position;
   for (var i = 0; i < count; i = i + 1) {
-    sum = sum + amplitude * _vgsl_7d56eac9__simplex3d(sample);
+    sum = sum + amplitude * _vgsl_bb550d71__simplex3d(sample);
     weight = weight + amplitude;
     sample = sample * lacunarity;
     amplitude = amplitude * decay;
@@ -399,7 +399,7 @@ fn _vgsl_7d56eac9__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
  
 
 // 12 gradients out of 32 bits: bias is 4/2^32 ~= 1e-9.
- fn _vgsl_51c0541e__gradIndex3(cell: vec3i) -> u32 { return _vgsl_0db9cd76__pcg3d(bitcast<vec3u>(cell)).x % 12u; }
+ fn _vgsl_5531df46__gradIndex3(cell: vec3i) -> u32 { return _vgsl_ec9ac88e__pcg3d(bitcast<vec3u>(cell)).x % 12u; }
 
 // 8 unit gradients. index 0..3 -> (1,0) (-1,0) (0,1) (0,-1);  4..7 -> (+-1,+-1)/sqrt(2).
 // Unit length keeps the 2D field's amplitude bound closed-form (raw sup |perlin2d| = 1/sqrt(2)).
@@ -408,7 +408,7 @@ fn _vgsl_7d56eac9__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
 // Perlin's 12 cube-edge gradients (+-1,+-1,0) (+-1,0,+-1) (0,+-1,+-1), length sqrt(2): the dot
 // product costs one add plus two negations, no multiplies.
 // index/4 selects the component pair: 0 -> (x,y), 1 -> (x,z), 2 -> (y,z); bits 0/1 are the signs.
- fn _vgsl_51c0541e__gradDot3(index: u32, d: vec3f) -> f32 {
+ fn _vgsl_5531df46__gradDot3(index: u32, d: vec3f) -> f32 {
   let pair = index / 4u;
   let a = select(d.x, d.y, pair == 2u);
   let b = select(select(d.y, d.z, pair == 1u), d.z, pair == 2u);
@@ -427,7 +427,7 @@ fn _vgsl_7d56eac9__simplexKernel3(cell: vec3i, d: vec3f) -> f32 {
 
  
 
- fn _vgsl_0db9cd76__pcg3d(value: vec3u) -> vec3u {
+ fn _vgsl_ec9ac88e__pcg3d(value: vec3u) -> vec3u {
   var hashed = value * 1664525u + 1013904223u;
   hashed.x = hashed.x + hashed.y * hashed.z;
   hashed.y = hashed.y + hashed.z * hashed.x;

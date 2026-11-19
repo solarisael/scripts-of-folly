@@ -110,10 +110,14 @@ function text_fragments(element) {
   return Array.from(element.querySelectorAll(PRETEXT_FRAGMENT_SELECTOR));
 }
 
-function draw_pretext_fragments({ element, context, bounds, inset }) {
-  const doc = element.ownerDocument;
-  const view = doc.defaultView;
-  const fragments = text_fragments(element);
+function draw_pretext_fragments({
+  fragments,
+  context,
+  bounds,
+  inset,
+  doc,
+  view,
+}) {
   for (const fragment of fragments) {
     const raw_text = fragment.textContent || "";
     if (!raw_text.trim()) continue;
@@ -143,11 +147,19 @@ function draw_pretext_fragments({ element, context, bounds, inset }) {
       fragment_rect.top - bounds.top + inset + ascent,
     );
   }
-  return fragments;
 }
 
-function draw_native_text({ element, context, bounds, inset, doc, view }) {
-  const nodes = text_nodes(element, view);
+function draw_native_text({
+  element,
+  context,
+  bounds,
+  inset,
+  doc,
+  view,
+  owns,
+}) {
+  const all_nodes = text_nodes(element, view);
+  const nodes = owns ? all_nodes.filter(owns) : all_nodes;
   let first_owner = null;
   for (const node of nodes) {
     const owner = node.parentElement || element;
@@ -182,10 +194,14 @@ function draw_native_text({ element, context, bounds, inset, doc, view }) {
   return first_owner;
 }
 
-/** Capture settled native text ink into a reusable transparent canvas. */
+/**
+ * Capture settled native text ink into a reusable transparent canvas.
+ * `owns(node)` limits the capture to the text nodes and Pretext fragments it
+ * accepts. With `owns`, a capture that owns no text returns null.
+ */
 export function capture_text(
   element,
-  { dpr = 1, padding = 8, soft = false } = {},
+  { dpr = 1, padding = 8, soft = false, owns = undefined } = {},
 ) {
   if (!element || element.nodeType !== 1) return null;
 
@@ -193,11 +209,17 @@ export function capture_text(
   const inset = Number.isFinite(padding) && padding >= 0 ? padding : 0;
   const doc = element.ownerDocument;
   const view = doc.defaultView;
-  const hadReady = element.hasAttribute(READY_ATTRIBUTE);
-  const readyValue = element.getAttribute(READY_ATTRIBUTE);
+  // A ready ancestor makes all of its descendants transparent. Its marker is
+  // lifted for the capture so the ink keeps the authored colour.
+  const ready_values = new Map();
+  for (let current = element; current; current = current.parentElement) {
+    if (current.hasAttribute(READY_ATTRIBUTE))
+      ready_values.set(current, current.getAttribute(READY_ATTRIBUTE));
+  }
   const hadCapture = element.hasAttribute(CAPTURE_ATTRIBUTE);
   const captureValue = element.getAttribute(CAPTURE_ATTRIBUTE);
-  element.removeAttribute(READY_ATTRIBUTE);
+  for (const ready of ready_values.keys())
+    ready.removeAttribute(READY_ATTRIBUTE);
   element.setAttribute(CAPTURE_ATTRIBUTE, "");
 
   try {
@@ -214,11 +236,22 @@ export function capture_text(
 
     context.scale(requestedDpr, requestedDpr);
     context.textBaseline = "alphabetic";
-    const fragments = text_fragments(element);
-    const first_owner = fragments.length
-      ? (draw_pretext_fragments({ element, context, bounds, inset }),
-        fragments[0])
-      : draw_native_text({ element, context, bounds, inset, doc, view });
+    const all_fragments = text_fragments(element);
+    const fragments = owns ? all_fragments.filter(owns) : all_fragments;
+    const first_owner = all_fragments.length
+      ? (draw_pretext_fragments({
+          fragments,
+          context,
+          bounds,
+          inset,
+          doc,
+          view,
+        }),
+        fragments[0] ?? null)
+      : draw_native_text({ element, context, bounds, inset, doc, view, owns });
+
+    if (owns && !first_owner) return null;
+
     const first_style = first_owner ? view.getComputedStyle(first_owner) : null;
     let soft_canvas = null;
     if (soft) {
@@ -264,8 +297,8 @@ export function capture_text(
         : "rgba(255, 255, 255, 1)",
     };
   } finally {
-    if (hadReady) element.setAttribute(READY_ATTRIBUTE, readyValue);
-    else element.removeAttribute(READY_ATTRIBUTE);
+    for (const [ready, value] of ready_values)
+      ready.setAttribute(READY_ATTRIBUTE, value);
     if (hadCapture) element.setAttribute(CAPTURE_ATTRIBUTE, captureValue ?? "");
     else element.removeAttribute(CAPTURE_ATTRIBUTE);
   }
