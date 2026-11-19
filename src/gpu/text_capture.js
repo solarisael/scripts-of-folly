@@ -1,7 +1,9 @@
 import { BLUR_RADII } from "./blur_levels.js";
+import {
+  CAPTURE_ATTRIBUTE,
+  TEXT_READY_ATTRIBUTE as READY_ATTRIBUTE,
+} from "./markers.js";
 
-const READY_ATTRIBUTE = "data-folly-gpu-text";
-const CAPTURE_ATTRIBUTE = "data-folly-capture";
 const PRETEXT_FRAGMENT_SELECTOR = ".sol__pretext_fragment";
 
 function text_nodes(root, view) {

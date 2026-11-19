@@ -1,19 +1,41 @@
+// The GPU text runtime of one page. This module keeps the list of effect
+// items. It decides when an item needs a new capture and prepares it.
+//
+//   ./targets.js       which elements are targets
+//   ./visibility.js    which targets are on screen
+//   ./presentation.js  the presenter canvas of an item
+//   ./frame_loop.js    when a frame draws, and the frame itself
+//   ./lifecycle.js     the renderer: boot, loss, fallback, failure
 import { WIDE_CAPTURE_PADDING } from "./blur_levels.js";
 import { capture_text } from "./text_capture.js";
 import { read_effect_parameters } from "./parameters.js";
-import { create_renderer, dispose_renderer } from "./renderer.js";
-import { create_frame_budget, LEVELS } from "./budget.js";
+import { create_frame_budget } from "./budget.js";
+import { create_frame_loop } from "./frame_loop.js";
+import { create_renderer_lifecycle } from "./lifecycle.js";
 import {
-  collect_effect_names,
-  TEXT_EFFECTS,
-  PANEL_EFFECTS,
-} from "./registry.js";
+  CAPTURE_ATTRIBUTE,
+  PANEL_READY_ATTRIBUTE,
+  TEXT_READY_ATTRIBUTE,
+} from "./markers.js";
+import {
+  create_presentation,
+  dispose_presentation,
+  effect_dpr,
+  hide_presentation,
+} from "./presentation.js";
+import {
+  effect_owner,
+  effective_effect_names,
+  element_is_in_root,
+  find_effect_target,
+  find_targets,
+  is_element,
+  is_internal_node,
+  is_panel_target,
+} from "./targets.js";
 import { scene_for } from "../scene/index.js";
 import "./gpu.css";
 
-const TEXT_READY_ATTRIBUTE = "data-folly-gpu-text";
-const PANEL_READY_ATTRIBUTE = "data-folly-gpu-panel";
-const CAPTURE_ATTRIBUTE = "data-folly-capture";
 const SOFT_EFFECTS = new Set([
   "glow",
   "neon",
@@ -43,148 +65,6 @@ const DYNAMIC_ATTRIBUTES = new Set([
   "data-site-reduced-motion",
 ]);
 
-function is_element(value) {
-  return value?.nodeType === 1;
-}
-
-function is_internal_node(value) {
-  return (
-    is_element(value) &&
-    (value.matches?.(
-      ".folly-gpu-canvas, .folly-gpu-presenter, [data-folly-transition]",
-    ) ||
-      value.hasAttribute(CAPTURE_ATTRIBUTE) ||
-      value.hasAttribute("data-folly-probe"))
-  );
-}
-
-function create_presentation(target, width, height) {
-  const document_value = target.ownerDocument;
-  const view = document_value.defaultView;
-  const canvas = document_value.createElement("canvas");
-  const needs_position_marker = !target.hasAttribute("data-folly-positioned");
-  const needs_position = view.getComputedStyle(target).position === "static";
-  if (
-    needs_position &&
-    [...target.querySelectorAll("*")].some(
-      (descendant) =>
-        !is_internal_node(descendant) &&
-        view.getComputedStyle(descendant).position === "absolute",
-    )
-  )
-    return null;
-  if (needs_position) target.setAttribute("data-folly-positioned", "");
-  canvas.className = "folly-gpu-presenter";
-  canvas.setAttribute("aria-hidden", "true");
-  canvas.style.width = `${width}px`;
-  canvas.style.height = `${height}px`;
-  canvas.style.left = "50%";
-  canvas.style.top = "50%";
-  canvas.style.transform = "translate(-50%, -50%)";
-  target.append(canvas);
-  const context = canvas.getContext("2d");
-  if (!context) {
-    canvas.remove();
-    if (needs_position && needs_position_marker)
-      target.removeAttribute("data-folly-positioned");
-    return null;
-  }
-  return {
-    canvas,
-    context,
-    owns_position: needs_position && needs_position_marker,
-  };
-}
-
-function dispose_presentation(item) {
-  const presentation = item.presentation;
-  if (!presentation) return;
-  presentation.canvas.remove();
-  const { target } = item;
-  if (presentation.owns_position)
-    target.removeAttribute("data-folly-positioned");
-  item.presentation = null;
-}
-
-function element_is_in_root(element, root) {
-  return root.nodeType === 9
-    ? root.documentElement.contains(element)
-    : root.contains(element);
-}
-
-function element_names(element) {
-  return collect_effect_names(element).filter(
-    (name) => TEXT_EFFECTS.includes(name) || PANEL_EFFECTS.includes(name),
-  );
-}
-
-function is_panel_target(names) {
-  return names.some((name) => PANEL_EFFECTS.includes(name));
-}
-
-function finite_rect(rect) {
-  return (
-    rect &&
-    [rect.left, rect.top, rect.width, rect.height].every(Number.isFinite)
-  );
-}
-
-function clipping_overflow(style) {
-  return [style.overflow, style.overflowX, style.overflowY].some(
-    (value) =>
-      value === "hidden" ||
-      value === "clip" ||
-      value === "scroll" ||
-      value === "auto",
-  );
-}
-
-function target_is_transitioning(element) {
-  return element.closest?.(".sol__pretext_transitioning") != null;
-}
-
-// A panel effect decorates its own box, so descendants do not inherit it.
-function effective_effect_names(element) {
-  const lineage = [];
-  let current = element;
-  while (current && current.nodeType === 1) {
-    lineage.unshift(current);
-    current = current.parentElement;
-  }
-  const names = [];
-  for (const owner of lineage) {
-    for (const name of element_names(owner)) {
-      if (owner !== element && PANEL_EFFECTS.includes(name)) continue;
-      if (!names.includes(name)) names.push(name);
-    }
-  }
-  return names;
-}
-
-// Inherited effects keep the parameters and colour of their naming element.
-function effect_owner(element, name) {
-  for (
-    let current = element;
-    is_element(current);
-    current = current.parentElement
-  ) {
-    if (element_names(current).includes(name)) return current;
-  }
-  return element;
-}
-
-function capture_representable(element) {
-  const unsupported =
-    "button,input,select,textarea,audio,video,canvas:not(.folly-gpu-presenter),svg,iframe,object,embed";
-  return (
-    !element.matches?.(unsupported) && !element.querySelector?.(unsupported)
-  );
-}
-
-function target_is_representable(element) {
-  const names = effective_effect_names(element);
-  return is_panel_target(names) || capture_representable(element);
-}
 function make_panel_capture(element) {
   const document_value = element.ownerDocument;
   const rect = element.getBoundingClientRect();
@@ -202,46 +82,6 @@ function make_panel_capture(element) {
     font_size: Number.parseFloat(style.fontSize) || 16,
     base_color: "rgb(0, 0, 0)",
   };
-}
-
-// Lays the visible effects out in rows on the one source canvas, in device
-// pixels, so one pass draws all of them and the frame waits for the GPU once.
-// A batch stays within MAX_ATLAS_PIXELS on each side (the WebGL2 leg's safe
-// texture size); more effects start another batch. An effect larger than
-// that gets a batch of its own, as before.
-const MAX_ATLAS_PIXELS = 4096;
-const ATLAS_GAP = 2;
-
-function pack_atlas(entries, dpr) {
-  const batches = [];
-  let batch = null;
-  let x = 0;
-  let y = 0;
-  let row_height = 0;
-  const start_batch = () => {
-    batch = { tiles: [], width: 1, height: 1 };
-    batches.push(batch);
-    x = 0;
-    y = 0;
-    row_height = 0;
-  };
-  for (const entry of entries) {
-    const width = Math.max(1, Math.ceil(entry.item.width * dpr));
-    const height = Math.max(1, Math.ceil(entry.item.height * dpr));
-    if (!batch) start_batch();
-    if (x > 0 && x + width > MAX_ATLAS_PIXELS) {
-      x = 0;
-      y += row_height + ATLAS_GAP;
-      row_height = 0;
-    }
-    if (y > 0 && y + height > MAX_ATLAS_PIXELS) start_batch();
-    batch.tiles.push({ entry, x, y, width, height });
-    batch.width = Math.max(batch.width, x + width);
-    batch.height = Math.max(batch.height, y + height);
-    x += width + ATLAS_GAP;
-    row_height = Math.max(row_height, height);
-  }
-  return batches;
 }
 
 // `open_gpu(kind, request)` lets a host page open the gpu through its own
@@ -265,103 +105,49 @@ export function install_gpu_effects({
   const cleanup = [];
   const dirty_targets = new Set();
   const observed_sizes = new WeakMap();
-  let queued_again = false;
   let resize_observer = null;
-  let media_query = null;
-  let media_query_listener = null;
-  let renderer_state = null;
-  let canvas = null;
+  // The refresh is idle, running, or running with one more run queued.
+  // `schedule_refresh()` owns both values.
   let refresh_promise = null;
-  let boot_promise = null;
-  let draw_promise = null;
-  let warned_failure_epoch = -1;
-  let animation_frame = 0;
-  let frame_timer = 0;
-  let epoch = 0;
-  let animation_time = 0;
-  let previous_frame_time = null;
-  let empty_frame_cleared = false;
-  let render_dirty = true;
-  let dead = false;
-  let failed = false;
-  let fallback_attempted = backend === "webgl2";
-  let recovering = false;
+  let queued_again = false;
   const budget = create_frame_budget({ now: () => view.performance.now() });
-  // Recent gaps between drawn frames, for a page at display refresh. The
-  // shortest one is the refresh: a slow frame only adds longer gaps.
-  const recent_gaps = [];
-
-  function current_reduced_motion() {
-    return (
-      view.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
-    );
-  }
-
-  function report_failure(error) {
-    if (warned_failure_epoch === epoch) return;
-    warned_failure_epoch = epoch;
-    console.warn(
-      "[Scripts of Folly] GPU effects unavailable; keeping native CSS.",
-      error,
-    );
-  }
-
-  function current_fps() {
-    const sources = [
-      document_value.documentElement,
-      document_value.body,
-      is_element(root) ? root : null,
-    ];
-    for (const source of sources) {
-      const value = source?.getAttribute("data-site-fps");
-      if (!value) continue;
-      if (/display|refresh/i.test(value)) return 0;
-      const parsed = Number(value);
-      if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    }
-    return 60;
-  }
-
-  // The frame interval the budget divides: the fps setting, or the display
-  // refresh. It never comes from the loop's own pace, or a slow frame would
-  // grow the interval and slow the next one.
-  function current_frame_ms(frame_time) {
-    const fps = current_fps();
-    if (fps > 0) return 1000 / fps;
-    if (previous_frame_time != null) {
-      const gap = frame_time - previous_frame_time;
-      if (gap > 2 && gap < 100) recent_gaps.push(gap);
-      if (recent_gaps.length > 60) recent_gaps.shift();
-    }
-    return recent_gaps.length ? Math.min(...recent_gaps) : 1000 / 60;
-  }
-
-  // data-folly-gpu-level shows the budget level of an effect (0 is full).
-  function show_level(item) {
-    const level = String(LEVELS.indexOf(budget.level_of(item)));
-    if (item.target.getAttribute("data-folly-gpu-level") !== level)
-      item.target.setAttribute("data-folly-gpu-level", level);
-  }
-
-  function is_alive(token = epoch) {
-    return !dead && token === epoch;
-  }
-
-  function make_canvas() {
-    const next_canvas = document_value.createElement("canvas");
-    next_canvas.className = "folly-gpu-canvas";
-    next_canvas.setAttribute("aria-hidden", "true");
-    (document_value.body || document_value.documentElement)?.append(
-      next_canvas,
-    );
-    return next_canvas;
-  }
+  const lifecycle = create_renderer_lifecycle({
+    document_value,
+    backend,
+    open_gpu,
+    on_gpu_time(handle, ms) {
+      for (const item of items.values()) {
+        if (item.handle === handle) {
+          budget.gpu_time(item, ms);
+          return;
+        }
+      }
+    },
+    on_release() {
+      frame.stop();
+      restore_all_targets();
+      dispose_items();
+    },
+    async on_restart() {
+      mark_all_dirty();
+      await refresh_targets();
+    },
+    on_restore: () => restore_all_targets(),
+  });
+  const frame = create_frame_loop({
+    view,
+    document_value,
+    root,
+    items,
+    budget,
+    lifecycle,
+    restore_target,
+  });
 
   function restore_target(target) {
     target.removeAttribute(TEXT_READY_ATTRIBUTE);
     target.removeAttribute(PANEL_READY_ATTRIBUTE);
-    const presentation = items.get(target)?.presentation;
-    if (presentation) presentation.canvas.style.visibility = "hidden";
+    hide_presentation(items.get(target));
   }
   function restore_all_targets() {
     for (const target of items.keys()) restore_target(target);
@@ -405,19 +191,8 @@ export function install_gpu_effects({
     for (const target of [...items.keys()]) dispose_item(target);
   }
 
-  function find_effect_target(node) {
-    let current = is_element(node) ? node : node?.parentElement;
-    while (current && current !== query_root) {
-      if (element_names(current).length > 0) return current;
-      current = current.parentElement;
-    }
-    return is_element(query_root) && element_names(query_root).length > 0
-      ? query_root
-      : null;
-  }
-
   function mark_dirty(target) {
-    const owner = find_effect_target(target) || target;
+    const owner = find_effect_target(target, query_root) || target;
     if (is_element(owner)) {
       dirty_targets.add(owner);
       // Nested owners share inherited effects and one inline flow.
@@ -426,390 +201,22 @@ export function install_gpu_effects({
           dirty_targets.add(item_target);
       }
     }
-    render_dirty = true;
+    frame.invalidate();
   }
 
   function mark_all_dirty() {
     for (const target of items.keys()) dirty_targets.add(target);
-    render_dirty = true;
+    frame.invalidate();
   }
 
-  function stop_drawing() {
-    if (animation_frame) view.cancelAnimationFrame(animation_frame);
-    if (frame_timer) view.clearTimeout(frame_timer);
-    animation_frame = 0;
-    frame_timer = 0;
-    previous_frame_time = null;
-  }
-
-  function schedule_draw() {
-    if (
-      dead ||
-      !renderer_state ||
-      animation_frame ||
-      frame_timer ||
-      draw_promise
-    )
-      return;
-    if (!render_dirty && current_reduced_motion()) return;
-
-    const request = () => {
-      frame_timer = 0;
-      if (!dead) animation_frame = view.requestAnimationFrame(draw_frame);
-    };
-    const fps = current_fps();
-    if (fps > 0 && previous_frame_time != null) {
-      const delay = Math.max(
-        0,
-        1000 / fps - (view.performance?.now?.() - previous_frame_time),
-      );
-      if (delay > 1) {
-        frame_timer = view.setTimeout(request, delay);
-        return;
-      }
-    }
-    animation_frame = view.requestAnimationFrame(draw_frame);
-  }
-
-  function viewport_size() {
-    return {
-      width: Math.max(
-        1,
-        view.innerWidth || document_value.documentElement.clientWidth || 1,
-      ),
-      height: Math.max(
-        1,
-        view.innerHeight || document_value.documentElement.clientHeight || 1,
-      ),
-    };
-  }
-
-  function visible_clip(item) {
-    if (document_value.visibilityState === "hidden") return null;
-
-    const target = item.target;
-    const style = view.getComputedStyle(target);
-    if (
-      style.display === "none" ||
-      style.visibility === "hidden" ||
-      Number(style.opacity) === 0
-    )
-      return null;
-
-    const target_rect = target.getBoundingClientRect();
-    const rect = {
-      left: target_rect.left + (target_rect.width - item.width) / 2,
-      top: target_rect.top + (target_rect.height - item.height) / 2,
-      right:
-        target_rect.left + (target_rect.width - item.width) / 2 + item.width,
-      bottom:
-        target_rect.top + (target_rect.height - item.height) / 2 + item.height,
-      width: item.width,
-      height: item.height,
-    };
-    if (!finite_rect(rect) || rect.width <= 0 || rect.height <= 0) return null;
-
-    const viewport = viewport_size();
-    const clip = {
-      left: Math.max(0, rect.left),
-      top: Math.max(0, rect.top),
-      right: Math.min(viewport.width, rect.right),
-      bottom: Math.min(viewport.height, rect.bottom),
-    };
-    let ancestor = target.parentElement;
-    while (ancestor && ancestor !== document_value.documentElement) {
-      const ancestor_style = view.getComputedStyle(ancestor);
-      if (
-        ancestor_style.display === "none" ||
-        ancestor_style.visibility === "hidden" ||
-        Number(ancestor_style.opacity) === 0
-      )
-        return null;
-      if (clipping_overflow(ancestor_style)) {
-        const ancestor_rect = ancestor.getBoundingClientRect();
-        clip.left = Math.max(clip.left, ancestor_rect.left);
-        clip.top = Math.max(clip.top, ancestor_rect.top);
-        clip.right = Math.min(clip.right, ancestor_rect.right);
-        clip.bottom = Math.min(clip.bottom, ancestor_rect.bottom);
-      }
-      ancestor = ancestor.parentElement;
-    }
-    if (clip.right <= clip.left || clip.bottom <= clip.top) return null;
-
-    return clip;
-  }
-
-  function item_entry(item) {
-    if (!visible_clip(item)) {
-      restore_target(item.target);
-      return null;
-    }
-    return {
-      item,
-      handle: item.handle,
-      rect: { left: 0, top: 0, width: item.width, height: item.height },
-      clip: { left: 0, top: 0, right: item.width, bottom: item.height },
-    };
-  }
-
-  async function draw_frame(frame_time) {
-    animation_frame = 0;
-    if (
-      dead ||
-      !renderer_state ||
-      document_value.visibilityState === "hidden"
-    ) {
-      stop_drawing();
+  function mark_affected(node) {
+    const scope = scene.owner(node)?.element;
+    if (!scope) {
+      mark_all_dirty();
       return;
     }
-    if (draw_promise) return;
-
-    let keep_animating = false;
-    let retry_after_draw = false;
-    draw_promise = (async () => {
-      const entries = [];
-      for (const item of items.values()) {
-        const entry = item_entry(item);
-        if (entry) entries.push(entry);
-      }
-      if (!entries.length) {
-        if (!empty_frame_cleared) {
-          await renderer_state.render([], 0);
-          empty_frame_cleared = true;
-        }
-        render_dirty = false;
-        stop_drawing();
-        return;
-      }
-      empty_frame_cleared = false;
-      // Before previous_frame_time moves on to this frame.
-      const frame_ms = current_frame_ms(frame_time);
-      if (current_reduced_motion()) {
-        animation_time = 0;
-      } else if (previous_frame_time != null) {
-        animation_time += Math.max(0, frame_time - previous_frame_time) / 1000;
-      }
-      previous_frame_time = frame_time;
-
-      try {
-        // Each copy owns only its ink. DOM ancestors clip it when the page scrolls.
-        const dpr = Math.min(1.5, Math.max(1, view.devicePixelRatio || 1));
-        budget.settle(
-          entries.map(({ item }) => item),
-          frame_ms,
-        );
-        // The effects due on this frame, grouped by render scale. The others
-        // keep their last picture.
-        const by_scale = new Map();
-        for (const entry of entries) {
-          if (!budget.due(entry.item, frame_time)) continue;
-          const level = budget.level_of(entry.item);
-          show_level(entry.item);
-          if (!by_scale.has(level.scale)) by_scale.set(level.scale, []);
-          by_scale.get(level.scale).push(entry);
-        }
-        for (const [scale, group] of by_scale) {
-          const density = dpr * scale;
-          for (const batch of pack_atlas(group, density)) {
-            renderer_state.resize(
-              batch.width / density,
-              batch.height / density,
-              dpr,
-              scale,
-            );
-            // Record the draw before the GPU runs it: its GPU time can come
-            // back before `render` resolves, and the budget needs the scale.
-            for (const { entry } of batch.tiles) {
-              budget.drawn(
-                entry.item,
-                frame_time,
-                frame_ms,
-                entry.item.width * entry.item.height * dpr * dpr,
-                scale,
-              );
-            }
-            await renderer_state.render(
-              batch.tiles.map(({ entry, x, y }) => {
-                const left = x / density;
-                const top = y / density;
-                const { width, height } = entry.item;
-                return {
-                  handle: entry.handle,
-                  rect: { left, top, width, height },
-                  clip: {
-                    left,
-                    top,
-                    right: left + width,
-                    bottom: top + height,
-                  },
-                };
-              }),
-              animation_time,
-            );
-            if (dead) return;
-            const source_canvas = renderer_state.canvas;
-            for (const { entry, x, y, width, height } of batch.tiles) {
-              // A refresh can dispose an item while the GPU draws.
-              if (!entry.item.presentation) continue;
-              const { canvas: presentation_canvas, context } =
-                entry.item.presentation;
-              // The copy keeps the full size; a lower scale is drawn larger.
-              const full_width = Math.max(1, Math.ceil(entry.item.width * dpr));
-              const full_height = Math.max(
-                1,
-                Math.ceil(entry.item.height * dpr),
-              );
-              if (
-                presentation_canvas.width !== full_width ||
-                presentation_canvas.height !== full_height
-              ) {
-                presentation_canvas.width = full_width;
-                presentation_canvas.height = full_height;
-              }
-              context.clearRect(0, 0, full_width, full_height);
-              context.drawImage(
-                source_canvas,
-                x,
-                y,
-                width,
-                height,
-                0,
-                0,
-                full_width,
-                full_height,
-              );
-              presentation_canvas.style.width = `${entry.item.width}px`;
-              presentation_canvas.style.height = `${entry.item.height}px`;
-              presentation_canvas.style.visibility = "visible";
-            }
-          }
-        }
-        for (const { item } of entries) {
-          item.target.setAttribute(
-            item.kind === "panel"
-              ? PANEL_READY_ATTRIBUTE
-              : TEXT_READY_ATTRIBUTE,
-            "ready",
-          );
-        }
-        render_dirty = false;
-        keep_animating = !current_reduced_motion();
-      } catch (error) {
-        await recover_from_loss(error);
-        retry_after_draw = true;
-      }
-    })();
-    try {
-      await draw_promise;
-    } finally {
-      draw_promise = null;
-      if (
-        ((keep_animating && render_dirty === false) || retry_after_draw) &&
-        !dead &&
-        renderer_state
-      )
-        schedule_draw();
-    }
-  }
-
-  async function recover_from_loss(loss_error) {
-    if (dead || recovering) return;
-
-    recovering = true;
-    const lost_backend = renderer_state?.backend;
-    epoch += 1;
-    const recovery_epoch = epoch;
-    stop_drawing();
-    restore_all_targets();
-    dispose_items();
-    dispose_renderer(renderer_state);
-    renderer_state = null;
-    canvas?.remove();
-    canvas = null;
-
-    try {
-      if (lost_backend === "webgl2" || fallback_attempted) {
-        failed = true;
-        report_failure(
-          loss_error || new Error("GPU backend lost after fallback"),
-        );
-        render_dirty = false;
-        return;
-      }
-      fallback_attempted = true;
-      await boot_renderer("webgl2");
-      if (renderer_state) {
-        failed = false;
-        mark_all_dirty();
-        await refresh_targets();
-      }
-    } catch (error) {
-      if (dead || recovery_epoch !== epoch) return;
-
-      failed = true;
-      report_failure(
-        loss_error
-          ? new AggregateError([loss_error, error], "GPU fallback failed")
-          : error,
-      );
-      restore_all_targets();
-      renderer_state = null;
-    } finally {
-      recovering = false;
-      if (!renderer_state) render_dirty = false;
-    }
-  }
-
-  async function boot_renderer(requested_backend = backend) {
-    if (renderer_state || dead || failed) return renderer_state;
-    if (boot_promise) return boot_promise;
-
-    const token = epoch;
-    boot_promise = (async () => {
-      canvas = make_canvas();
-      const created = await create_renderer(canvas, {
-        backend: requested_backend,
-        is_alive: () => is_alive(token),
-        on_lost: (loss_error) => recover_from_loss(loss_error),
-        on_gpu_time: (handle, ms) => {
-          for (const item of items.values()) {
-            if (item.handle === handle) {
-              budget.gpu_time(item, ms);
-              return;
-            }
-          }
-        },
-        open: open_gpu,
-      });
-
-      if (!created || !is_alive(token)) {
-        created?.dispose?.();
-        canvas?.remove();
-        canvas = null;
-        return null;
-      }
-
-      renderer_state = created;
-      canvas = created.canvas || canvas;
-      canvas.dataset.follyRenderer = created.backend;
-
-      return renderer_state;
-    })();
-    try {
-      const result = await boot_promise;
-      if (result?.backend === "webgl2") fallback_attempted = true;
-      return result;
-    } catch (error) {
-      if (dead || token !== epoch) return null;
-
-      failed = true;
-      report_failure(error);
-      restore_all_targets();
-      canvas?.remove();
-      canvas = null;
-      throw error;
-    } finally {
-      boot_promise = null;
+    for (const target of items.keys()) {
+      if (scope.contains(target) || target.contains(scope)) mark_dirty(target);
     }
   }
 
@@ -824,7 +231,7 @@ export function install_gpu_effects({
       target.setAttribute(CAPTURE_ATTRIBUTE, "");
       try {
         captured = capture_text(target, {
-          dpr: Math.min(1.5, Math.max(1, view.devicePixelRatio || 1)),
+          dpr: effect_dpr(view),
           padding: soft || names.includes("rift") ? WIDE_CAPTURE_PADDING : 8,
           soft,
           owns: (node) => owns_text(target, node),
@@ -841,8 +248,8 @@ export function install_gpu_effects({
       return;
     }
     if (
-      !is_alive(token) ||
-      !renderer_state ||
+      !lifecycle.is_alive(token) ||
+      !lifecycle.renderer ||
       !element_is_in_root(target, root)
     )
       return;
@@ -853,14 +260,14 @@ export function install_gpu_effects({
 
     let handle;
     try {
-      handle = await renderer_state.prepare(
+      handle = await lifecycle.renderer.prepare(
         captured,
         names,
         parameter_sets,
         panel ? "panel" : "text",
       );
     } catch (error) {
-      if (dead || !is_alive(token)) return null;
+      if (!lifecycle.is_alive(token)) return null;
       const backend_error =
         error instanceof Error
           ? error
@@ -869,7 +276,7 @@ export function install_gpu_effects({
       throw backend_error;
     }
 
-    if (!handle || !is_alive(token) || !renderer_state) {
+    if (!handle || !lifecycle.is_alive(token) || !lifecycle.renderer) {
       handle?.dispose?.();
       return;
     }
@@ -885,8 +292,8 @@ export function install_gpu_effects({
       presentation: null,
     };
     if (previous?.kind === item.kind && previous.presentation) {
-      await draw_promise;
-      if (!is_alive(token) || items.get(target) !== previous) {
+      await frame.drawing;
+      if (!lifecycle.is_alive(token) || items.get(target) !== previous) {
         handle.dispose?.();
         return;
       }
@@ -905,41 +312,17 @@ export function install_gpu_effects({
     if (!previous) mark_owners_above(target);
     resize_observer?.observe(target);
     dirty_targets.delete(target);
-    render_dirty = true;
-  }
-
-  function find_targets() {
-    const targets = [];
-
-    if (
-      is_element(query_root) &&
-      effective_effect_names(query_root).length &&
-      target_is_representable(query_root) &&
-      !target_is_transitioning(query_root)
-    )
-      targets.push(query_root);
-
-    for (const element of query_root.querySelectorAll?.("*") || []) {
-      if (
-        !is_internal_node(element) &&
-        element_names(element).length &&
-        target_is_representable(element) &&
-        !target_is_transitioning(element)
-      )
-        targets.push(element);
-    }
-
-    return targets;
+    frame.invalidate();
   }
 
   async function refresh_targets() {
-    if (dead || failed) return;
+    if (lifecycle.dead || lifecycle.failed) return;
 
-    const token = epoch;
-    await boot_renderer();
+    const token = lifecycle.epoch;
+    await lifecycle.boot();
 
-    if (!renderer_state || !is_alive(token)) return;
-    const targets = find_targets();
+    if (!lifecycle.renderer || !lifecycle.is_alive(token)) return;
+    const targets = find_targets(query_root);
     const target_set = new Set(targets);
     for (const target of [...items.keys()]) {
       if (!target_set.has(target) || !element_is_in_root(target, root))
@@ -956,44 +339,32 @@ export function install_gpu_effects({
         await prepare_target(target, names, token);
     }
 
-    render_dirty = true;
-    schedule_draw();
+    frame.invalidate();
+    frame.schedule();
   }
 
   function schedule_refresh() {
-    if (dead) return;
+    if (lifecycle.dead) return;
     if (refresh_promise) {
       queued_again = true;
       return;
     }
 
-    const refresh_epoch = epoch;
+    const refresh_epoch = lifecycle.epoch;
     refresh_promise = Promise.resolve().then(async () => {
       try {
         await refresh_targets();
       } catch (error) {
-        if (dead || refresh_epoch !== epoch) return;
-        const can_fallback =
-          error?.folly_backend_failure &&
-          renderer_state?.backend === "webgpu" &&
-          !fallback_attempted;
-        if (can_fallback) {
-          await recover_from_loss(error);
-        } else {
-          failed = true;
-          report_failure(error);
-          restore_all_targets();
-          dispose_renderer(renderer_state);
-          renderer_state = null;
-          canvas?.remove();
-          canvas = null;
-        }
+        if (lifecycle.dead || refresh_epoch !== lifecycle.epoch) return;
+        if (error?.folly_backend_failure && lifecycle.can_fall_back)
+          await lifecycle.recover(error);
+        else lifecycle.fail(error);
       } finally {
         refresh_promise = null;
-        if (queued_again && !dead) {
+        if (queued_again && !lifecycle.dead) {
           queued_again = false;
           schedule_refresh();
-        } else if (!dead) {
+        } else if (!lifecycle.dead) {
           // Every dirty target is prepared (or restored after a failure). A
           // host page can show its text effects now.
           document_value.dispatchEvent(
@@ -1004,23 +375,15 @@ export function install_gpu_effects({
     });
   }
 
-  function mark_affected(node) {
-    const scope = scene.owner(node)?.element;
-    if (!scope) {
-      mark_all_dirty();
-      return;
-    }
-    for (const target of items.keys()) {
-      if (scope.contains(target) || target.contains(scope)) mark_dirty(target);
-    }
-  }
-
   function handle_mutations(records) {
     let changed = false;
     for (const record of records) {
       if (ignore_mutation?.(record) || scene.ignores_mutation(record)) continue;
       if (record.type === "attributes") {
-        if (record.target === canvas || is_internal_node(record.target))
+        if (
+          record.target === lifecycle.canvas ||
+          is_internal_node(record.target)
+        )
           continue;
         const attribute_name = record.attributeName || "";
         if (
@@ -1035,13 +398,13 @@ export function install_gpu_effects({
           attribute_name.startsWith("data-block-fx-") ||
           attribute_name.startsWith("data-site-")
         ) {
-          const effect_target = find_effect_target(record.target);
+          const effect_target = find_effect_target(record.target, query_root);
           if (effect_target) mark_dirty(effect_target);
           else mark_affected(record.target);
           changed = true;
         }
       } else if (record.type === "characterData") {
-        const effect_target = find_effect_target(record.target);
+        const effect_target = find_effect_target(record.target, query_root);
         if (effect_target) {
           mark_dirty(effect_target);
           changed = true;
@@ -1053,7 +416,7 @@ export function install_gpu_effects({
           (nodes.length > 0 && nodes.every(is_internal_node))
         )
           continue;
-        const effect_target = find_effect_target(record.target);
+        const effect_target = find_effect_target(record.target, query_root);
         if (effect_target) mark_dirty(effect_target);
         for (const node of nodes) {
           for (const target of items.keys()) {
@@ -1104,7 +467,8 @@ export function install_gpu_effects({
           })
         : null;
     if (resize_observer) cleanup.push(() => resize_observer.disconnect());
-    for (const target of find_targets()) resize_observer?.observe(target);
+    for (const target of find_targets(query_root))
+      resize_observer?.observe(target);
 
     add_listener(
       view,
@@ -1120,8 +484,8 @@ export function install_gpu_effects({
       view,
       "scroll",
       () => {
-        render_dirty = true;
-        schedule_draw();
+        frame.invalidate();
+        frame.schedule();
       },
       { passive: true, capture: true },
     );
@@ -1129,10 +493,10 @@ export function install_gpu_effects({
     add_listener(document_value, "visibilitychange", () => {
       if (document_value.visibilityState === "hidden") {
         restore_all_targets();
-        stop_drawing();
+        frame.stop();
       } else {
-        previous_frame_time = null;
-        render_dirty = true;
+        frame.reset_clock();
+        frame.invalidate();
         schedule_refresh();
       }
     });
@@ -1170,49 +534,38 @@ export function install_gpu_effects({
       schedule_refresh();
     });
 
-    media_query = view.matchMedia?.("(prefers-reduced-motion: reduce)");
-    media_query_listener = () => {
-      previous_frame_time = null;
-      render_dirty = true;
-      restore_all_targets();
-      schedule_draw();
-    };
-    media_query?.addEventListener?.("change", media_query_listener);
-    cleanup.push(() =>
-      media_query?.removeEventListener?.("change", media_query_listener),
+    add_listener(
+      view.matchMedia?.("(prefers-reduced-motion: reduce)"),
+      "change",
+      () => {
+        frame.reset_clock();
+        frame.invalidate();
+        restore_all_targets();
+        frame.schedule();
+      },
     );
   }
 
   async function refresh() {
-    if (dead) return;
+    if (lifecycle.dead) return;
 
-    failed = false;
-    fallback_attempted = backend === "webgl2";
-    warned_failure_epoch = -1;
+    lifecycle.rearm();
     mark_all_dirty();
     schedule_refresh();
 
-    while (!dead && refresh_promise) {
+    while (!lifecycle.dead && refresh_promise) {
       const pending_refresh = refresh_promise;
       await pending_refresh;
     }
   }
 
   function dispose() {
-    if (dead) return;
+    if (lifecycle.dead) return;
 
-    dead = true;
-    epoch += 1;
     queued_again = false;
     dirty_targets.clear();
-    stop_drawing();
     for (const remove_listener of cleanup.splice(0)) remove_listener();
-    restore_all_targets();
-    dispose_items();
-    dispose_renderer(renderer_state);
-    renderer_state = null;
-    canvas?.remove();
-    canvas = null;
+    lifecycle.dispose();
   }
 
   attach_observers();
