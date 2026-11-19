@@ -7,7 +7,8 @@
     "build:terminal-shader": "bun scripts/build_terminal_shader.js",
     "check:text-shader": "bun scripts/check_text_shader.js",
     "glsl:build": "bun scripts/build_glsl.js",
-    "glsl:check": "bun scripts/build_glsl.js --check"
+    "glsl:check": "bun scripts/build_glsl.js --check",
+    "test": "bun test"
   },
   "dependencies": {
     "@chenglou/pretext": "0.0.9",

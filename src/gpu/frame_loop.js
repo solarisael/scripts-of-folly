@@ -7,8 +7,10 @@
 //   queued   An animation frame is requested.
 //   drawing  A frame is on the GPU. A new request has no effect until it ends.
 //
-// `invalidate()` tells the loop that the picture is out of date. With reduced
-// motion the loop draws only an invalid picture, then stops.
+// `invalidate()` tells the loop that the picture is out of date. A frame
+// reads the items when it starts, so it makes only the earlier requests
+// valid. A request during a frame gets one more frame. With reduced motion
+// the loop draws only an invalid picture, then stops.
 import { LEVELS } from "./budget.js";
 import { PANEL_READY_ATTRIBUTE, TEXT_READY_ATTRIBUTE } from "./markers.js";
 import { effect_dpr, present_tile } from "./presentation.js";
@@ -264,6 +266,8 @@ export function create_frame_loop({
     let keep_animating = false;
     let retry_after_draw = false;
     draw_promise = (async () => {
+      // This frame shows the items as they are now.
+      render_dirty = false;
       const entries = [];
       for (const item of items.values()) {
         const entry = item_entry(item);
@@ -274,7 +278,6 @@ export function create_frame_loop({
           await lifecycle.renderer.render([], 0);
           empty_frame_cleared = true;
         }
-        render_dirty = false;
         stop();
         return;
       }
@@ -290,7 +293,6 @@ export function create_frame_loop({
 
       try {
         if (!(await draw_entries(entries, frame_time, frame_ms))) return;
-        render_dirty = false;
         keep_animating = !current_reduced_motion();
       } catch (error) {
         await lifecycle.recover(error);
@@ -302,7 +304,7 @@ export function create_frame_loop({
     } finally {
       draw_promise = null;
       if (
-        ((keep_animating && render_dirty === false) || retry_after_draw) &&
+        (keep_animating || render_dirty || retry_after_draw) &&
         !lifecycle.dead &&
         lifecycle.renderer
       )
