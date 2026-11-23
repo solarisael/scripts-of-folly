@@ -188,21 +188,21 @@ First, the loop must show their cost.
 
 ## Order of work
 
-1. The Folly lint and the first rules, with rule tests and CI.
+1. The Folly lint and the first rules, with rule tests and CI (#1).
    This step is small, and it protects each step after it.
-2. GPU planes, fields and blend modes in the compositor, with tests on both backends.
-3. The page loop and the lifecycle.
+2. GPU planes, fields and blend modes in the compositor, with tests on both backends (#2).
+3. The page loop and the lifecycle (#3).
    `frame_loop.js` and `lifecycle.js` serve compositions as well as text.
    The text runtime moves onto them, and its behaviour does not change.
-4. Measurement: checked timestamps, fences and frame gaps.
-5. The map moves onto one composition.
+4. Measurement: checked timestamps, fences and frame gaps (#4).
+5. The map moves onto one composition (solarisael site #12).
    Proof: captures with reduced motion are byte-identical to the current build on both backends.
    Then an A/B test on a phone at 120 Hz while a finger moves.
-6. The camera and input state machine of the map.
-7. The other effects of the site (fog, mantle glow, obsidian, menu), each one when work touches it.
+6. The camera and input state machine of the map (solarisael site #13).
+7. The other effects of the site (fog, mantle glow, obsidian, menu), each one when work touches it (solarisael site #14).
 
 Before step 2, Sol decides about two WebGL2 commits for texture arrays in the `folly-arrays` checkout: `bb9b026` and `ebaab69`.
-He can land them or drop them.
+He can land them or drop them (#5).
 This plan does not need them.
 
 ## Open questions
