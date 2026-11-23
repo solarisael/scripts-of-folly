@@ -75,9 +75,8 @@ export function create_frame_loop({
   let animation_time = 0;
   let previous_frame_time = null;
   let empty_frame_cleared = false;
-  // Recent gaps between drawn frames, for a page at display refresh. The
-  // shortest one is the refresh: a slow frame only adds longer gaps.
-  const recent_gaps = [];
+  let refresh_probe = 0;
+  const display_gaps = [];
 
   function current_reduced_motion() {
     return (
@@ -107,12 +106,16 @@ export function create_frame_loop({
   function current_frame_ms(frame_time) {
     const fps = current_fps();
     if (fps > 0) return 1000 / fps;
-    if (previous_frame_time != null) {
-      const gap = frame_time - previous_frame_time;
-      if (gap > 2 && gap < 100) recent_gaps.push(gap);
-      if (recent_gaps.length > 60) recent_gaps.shift();
+    if (!refresh_probe) {
+      // Sample the very next display tick, even if the renderer is still busy.
+      refresh_probe = view.requestAnimationFrame((tick) => {
+        refresh_probe = 0;
+        const gap = tick - frame_time;
+        if (gap > 2 && gap < 100) display_gaps.push(gap);
+        if (display_gaps.length > 60) display_gaps.shift();
+      });
     }
-    return recent_gaps.length ? Math.min(...recent_gaps) : 1000 / 60;
+    return display_gaps.length ? Math.min(...display_gaps) : 1000 / 60;
   }
 
   // data-folly-gpu-level shows the budget level of an effect (0 is full).
@@ -125,6 +128,8 @@ export function create_frame_loop({
   // Any state -> idle. A frame on the GPU still ends.
   function stop() {
     if (animation_frame) view.cancelAnimationFrame(animation_frame);
+    if (refresh_probe) view.cancelAnimationFrame(refresh_probe);
+    refresh_probe = 0;
     if (frame_timer) view.clearTimeout(frame_timer);
     animation_frame = 0;
     frame_timer = 0;
@@ -177,12 +182,13 @@ export function create_frame_loop({
 
   // Draws the effects that are due, one batch for each render scale, and
   // copies each tile to its presenter.
-  async function draw_entries(entries, frame_time, frame_ms) {
+  async function draw_entries(entries, frame_time, frame_ms, gap) {
     // Each copy owns only its ink. DOM ancestors clip it when the page scrolls.
     const dpr = effect_dpr(view);
     budget.settle(
       entries.map(({ item }) => item),
       frame_ms,
+      gap,
     );
     // The effects due on this frame, grouped by render scale. The others
     // keep their last picture.
@@ -231,6 +237,7 @@ export function create_frame_loop({
             };
           }),
           animation_time,
+          frame_time,
         );
         if (lifecycle.dead) return false;
         const source_canvas = lifecycle.renderer.canvas;
@@ -284,6 +291,8 @@ export function create_frame_loop({
       empty_frame_cleared = false;
       // Before previous_frame_time moves on to this frame.
       const frame_ms = current_frame_ms(frame_time);
+      const gap = previous_frame_time == null || current_reduced_motion()
+        ? null : frame_time - previous_frame_time;
       if (current_reduced_motion()) {
         animation_time = 0;
       } else if (previous_frame_time != null) {
@@ -292,7 +301,7 @@ export function create_frame_loop({
       previous_frame_time = frame_time;
 
       try {
-        if (!(await draw_entries(entries, frame_time, frame_ms))) return;
+        if (!(await draw_entries(entries, frame_time, frame_ms, gap))) return;
         keep_animating = !current_reduced_motion();
       } catch (error) {
         await lifecycle.recover(error);
