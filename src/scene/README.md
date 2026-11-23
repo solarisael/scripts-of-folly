@@ -2,7 +2,7 @@
 
 Import `scene_for` from `scripts-of-folly/scene`.
 The utility uses the DOM as its scene graph.
-It creates no canvas, GPU device, or animation loop.
+Layer registration creates no canvas, GPU device, or animation loop.
 
 Use one scene for each document.
 Register a content layer with `scene.layer(element)`.
@@ -62,10 +62,10 @@ It never reads text, captures private content, or changes authorization.
 
 Use `await scene.compose(outputCanvas, options)` to create a GPU compositor.
 You can also import `create_compositor` from `scripts-of-folly/scene/compositor`.
-The options accept `backend`, `open_gpu`, and `max_pixels`.
-The default pixel budget is 1,048,576 pixels.
-The compositor tries WebGPU first and then WebGL2 when device initialization fails.
-An explicit backend selects one implementation.
+The first GPU client sets the page backend and the `open_gpu` function.
+An explicit composition backend must match the active backend.
+The default backend is `auto`. It tries WebGPU and then WebGL2.
+`max_pixels` limits each composition. The default is 1,048,576 pixels.
 Both implementations of the built-in treatments use the same WGSL source.
 
 Register each image with `compositor.source(layer, image, { rect })`.
@@ -116,16 +116,29 @@ An image-only composition skips a render when its inputs and dimensions do not c
 The `stats` property reports frames, source uploads, and render passes.
 It does not report presented frames or GPU execution time.
 
-The caller schedules rendering.
-The compositor creates no animation loop.
-Concurrent render calls fail instead of accumulating work.
+The page loop draws compositions and text effects on one device.
+By default, a composition waits for `render()`.
+This method requests one page frame and resolves to true after submission, or false for an unchanged image.
+Concurrent explicit requests fail instead of accumulating work.
+Automatic frames use the dimensions from the last request, or the canvas dimensions by default.
+
+Pass `wants_frame(now)` to request frames while an animation moves.
+Return false at rest. The composition then submits no work and takes no budget share.
+When all items rest, the loop stops. Call `render()` after an input event to wake it.
+The callback controls motion for this composition, including reduced motion.
+
+The `share` option is a positive weight. Its default is 1.
+`levels` lists accepted budget indices in increasing order, starting at 0. The default accepts all six levels.
+For example, `[0, 2]` accepts full scale and half scale at full rate. `[0]` fixes full quality.
+The budget divides time between active compositions and visible text. Each composition submits once per draw.
+Its fields and planes receive the same level.
 The pixel budget limits the physical target dimensions.
 Handle errors from initialization and rendering.
 Keep accessible source content available when rendering fails.
 
 Call `input.dispose()` to remove an input and release its uploaded image.
 Layer disposal removes its registered inputs.
-Call `compositor.dispose()` to release the device and all compositor resources.
+Call `compositor.dispose()` to release its resources. The last client releases the page device.
 Output layer disposal also releases the compositor.
 Disposal does not remove or hide the source DOM.
 
@@ -178,17 +191,20 @@ await sky.render();
 `draw(frame, { state, reads, size, level, now, opacity })` must finish synchronously.
 `state` is the build result for this device.
 `size` contains the width and height of this target in physical pixels.
-`level` is 0 (full quality). `now` is the frame time in milliseconds.
-Pass `now` to `render` to supply the time. The default is `performance.now()`.
+`level` is the page budget index for this composition. Level 0 means full quality.
+`now` is the page frame time in milliseconds. Pass `now` to `render()` to override the time for that request.
 Use `opacity` from the layer in your shader when you need opacity control.
-Each explicit `render()` draws all GPU inputs. The compositor does not schedule frames.
+An explicit request draws all GPU inputs even when the current budget rate would skip the frame.
 
 Keep device resources in the build result, not in the input declaration.
 Give the result a `dispose()` method to release resources that you own.
-The compositor calls that method on input disposal and device loss, after any pending render leaves the device.
-After loss, the next render opens the same backend and builds all live inputs again.
-It uploads source images again. No texture or pipeline crosses devices.
-Initialization or build errors reach the caller.
+On input disposal and device loss, the compositor releases built resources.
+It also releases results from asynchronous builds that finish after disposal or loss.
+After WebGPU loss, the page tries WebGL2 once. It rebuilds live inputs and uploads source images again, even for a resting composition.
+The output canvas retains its identity. No texture or pipeline crosses devices.
+Loss of the WebGL2 device stops the loop and clears the output. Keep native content available.
+Initialization and explicit render errors reach the caller.
+An automatic draw error pauses that composition until the next explicit request.
 
 ## Backdrop treatments
 

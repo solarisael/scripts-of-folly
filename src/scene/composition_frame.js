@@ -2,12 +2,12 @@ import { field_textures } from "./passes.js";
 
 const NO_READS = Object.freeze([]);
 
-function gpu_draw(pass, { input, opacity }, prepared, now) {
+function gpu_draw(pass, { input, opacity }, prepared, now, level) {
   if (input.disposed) throw new Error("A GPU input was disposed before its draw.");
   const result = input.draw(pass, {
     state: prepared.get(input).built,
     size: pass.target.size,
-    level: 0,
+    level,
     now,
     opacity,
     reads: input.reads?.length ? field_textures(input.reads, prepared) : NO_READS,
@@ -52,16 +52,17 @@ function image_draw(pass, { input, opacity }, state, images, background, size, d
   });
 }
 
-export function draw_composition(resources, plan, size, density, now) {
-  const { api, gpu, prepared, surface, images } = resources;
+export function draw_composition(resources, plan, size, density, { now, level, renderer, item, frame_time }) {
+  const { prepared, surface, images } = resources;
   let passes = 0;
-  api.frame(gpu, (frame) => {
+  renderer.submit(frame_time, (frame) => {
     const pass = (target, body) => {
-      frame.pass(target, body);
+      const timer = renderer.span_of(item.handle, passes);
+      frame.pass(timer ? { target, timer } : target, body);
       passes++;
     };
     for (const field of plan.fields) {
-      pass(prepared.get(field.input).target, (open) => gpu_draw(open, field, prepared, now));
+      pass(prepared.get(field.input).target, (open) => gpu_draw(open, field, prepared, now, level));
     }
     let current;
     for (const [index, { base, planes }] of plan.groups.entries()) {
@@ -69,7 +70,7 @@ export function draw_composition(resources, plan, size, density, now) {
       current = plan.groups.length === 1 ? surface : images.pair[index % 2];
       pass(current, (open) => {
         if (effect) open.draw(effect);
-        for (const plane of planes) gpu_draw(open, plane, prepared, now);
+        for (const plane of planes) gpu_draw(open, plane, prepared, now, level);
       });
     }
     if (current !== surface) {

@@ -19,8 +19,8 @@ The last command needs naga-cli 30.0.1 on `PATH`. CI runs the same checks.
 - JavaScript shader sources cannot use the `document` and `window` globals. The shader build runs without a DOM.
 
 The JavaScript rules check dot access, including optional chains. They do not resolve aliases or computed properties.
-Folly still has frame requests outside `frame_loop.js`. The terminal still opens its own GPU.
-The compositor does not yet take a plane draw callback. The lint does not certify these planned boundaries.
+The page loop owns text effects and scene compositions. Independent features still request frames, and the terminal opens its own GPU.
+See the [owner list](../README.md) for their roles. The lint does not enforce a repository-wide frame rule or check plane callbacks.
 
 ## WGSL modules
 

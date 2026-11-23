@@ -6,9 +6,9 @@ The Drown shader uses white water with light text and black water with dark text
 This default follows the page ink for dark and light themes.
 Explicit effect colors keep their colored water and pale blue highlights.
 
-GPU effects use one shared GPU surface sized for the largest visible effect.
-Each effect renders separately into this surface.
-The runtime copies each result to a small canvas inside its target.
+Scene compositions and GPU text effects share one animation callback, budget, and device per document.
+The text runtime packs visible effects into an atlas for each render scale.
+It copies each tile to a small canvas inside its target.
 These canvases follow document scrolling, nested scrolling, fixed elements, and sticky elements between shader frames.
 DOM ancestors apply clipping to the canvases.
 
@@ -35,8 +35,10 @@ The WebGL2 leg mirrors the part of the vgpu API that Folly and its host pages us
 Import it from `scripts-of-folly/webgl2`.
 Pair each prepared shader (a `.wgsl` import through the vgpu loader) with its GLSL through `shader_module()`.
 It returns the shader itself and keeps the GLSL for the WebGL2 leg.
-A host page can pass `open_gpu(kind)` to `install_gpu_effects()`.
-Then the text effects open their GPU through the page's own backend selection.
+A host can pass `open_gpu(kind, request)` to the first text install or scene composition.
+Later clients use that page device. Disposing one client leaves the others running.
+On WebGPU loss, all clients release their resources and rebuild once on WebGL2.
+On WebGL2 loss, text returns to native CSS and compositions clear their output.
 
 The text effect CSS sets layout and fonts only.
 The GPU draws all colour, glow, shadow, and motion.
@@ -44,7 +46,7 @@ Without a GPU, the text shows as plain text.
 The runtime sends `folly:gpu-settled` on the document when all the effects are prepared.
 A host page can show its text effects after this event.
 
-The text effects share half of each frame on the GPU.
+Active compositions and visible text effects share half of each frame on the GPU by default.
 Each effect gets a part of that time in proportion to its share.
 An effect over its part steps down: a lower render scale, then a lower frame rate, then a still.
 The budget checks the sum of all GPU timestamps against the time between consecutive frames.
@@ -57,6 +59,19 @@ Repeated misses lower the most expensive share. Three seconds at the target rate
 `budget.report()` shows the measurement source, the last fence time, and each visible effect's level and share.
 Only checked timestamps give a cost for an individual effect.
 `budget.tune({ frame_share, shares })` changes the numbers while the page runs.
+
+See [Scene layers](src/scene/README.md#composed-rendering) for composition demand, shares, levels, and explicit draws.
+A resting composition takes no share and submits no GPU work.
+
+The shared clock covers text captures and registered compositions, not every use of animation frames:
+
+- DOM hydration batches marker and style changes without a GPU.
+- Pretext shader transitions keep their abortable playback clock and stage device.
+- The terminal owns a WebGPU device for glyph storage buffers and falls back to static output.
+- Page transitions synchronize the CSS reveal with a host painter or a 2D ring, even without a GPU.
+- Vision owns the banner image, visibility clock, renderer, and image fallback.
+
+These independent APIs do not register scene compositions. A repository-wide frame or device ownership rule would reject them.
 
 See [Lint checks](docs/lint.md) for the JavaScript rules, the WGSL check, and the rule tests.
 
@@ -77,6 +92,8 @@ That browser must load the page from its own `127.0.0.1`, so forward port 4399 t
 `--stale <rounds>` counts the captures that are out of date after a late style change.
 `--bench <rounds>` gives the time of a full recapture and the longest gap between two frames.
 The head of `scripts/gpu_compare.js` lists all options.
+`bun run gpu:compare --shared <directory> --executable <path>` checks a mixed page on hardware WebGPU and WebGL2.
+It checks visible screenshots, accepted budget levels, device counts, and recovery after forced loss.
 
 ## Page transitions
 

@@ -9,9 +9,8 @@
 import { WIDE_CAPTURE_PADDING } from "./blur_levels.js";
 import { capture_text } from "./text_capture.js";
 import { read_effect_parameters } from "./parameters.js";
-import { create_frame_budget } from "./budget.js";
-import { create_frame_loop } from "./frame_loop.js";
-import { create_renderer_lifecycle } from "./lifecycle.js";
+import { join_gpu_page } from "./lifecycle.js";
+import { visible_clip } from "./visibility.js";
 import {
   CAPTURE_ATTRIBUTE,
   PANEL_READY_ATTRIBUTE,
@@ -111,32 +110,19 @@ export function install_gpu_effects({
   // `schedule_refresh()` owns both values.
   let refresh_promise = null;
   let queued_again = false;
-  const budget = create_frame_budget({ now: () => view.performance.now() });
-  const lifecycle = create_renderer_lifecycle({
-    document_value,
-    backend,
-    open_gpu,
-    budget,
-    on_release() {
-      frame.stop();
+  let disposed = false;
+  const { budget, frame, lifecycle, leave } = join_gpu_page(document_value, { backend, open_gpu }, {
+    root, items,
+    release() {
       restore_all_targets();
       dispose_items();
     },
-    async on_restart() {
+    async restart() {
       mark_all_dirty();
       await refresh_targets();
     },
-    on_restore: () => restore_all_targets(),
-  });
-  const frame = create_frame_loop({
-    view,
-    document_value,
-    root,
-    items,
-    budget,
-    lifecycle,
-    restore_target,
-  });
+  }, "text");
+  const alive = (token) => !disposed && lifecycle.is_alive(token);
 
   function restore_target(target) {
     target.removeAttribute(TEXT_READY_ATTRIBUTE);
@@ -256,7 +242,7 @@ export function install_gpu_effects({
       return true;
     }
     if (
-      !lifecycle.is_alive(token) ||
+      !alive(token) ||
       !lifecycle.renderer ||
       !element_is_in_root(target, root)
     )
@@ -275,7 +261,7 @@ export function install_gpu_effects({
         panel ? "panel" : "text",
       );
     } catch (error) {
-      if (!lifecycle.is_alive(token)) return false;
+      if (!alive(token)) return false;
       const backend_error =
         error instanceof Error
           ? error
@@ -284,7 +270,7 @@ export function install_gpu_effects({
       throw backend_error;
     }
 
-    if (!handle || !lifecycle.is_alive(token) || !lifecycle.renderer) {
+    if (!handle || !alive(token) || !lifecycle.renderer) {
       handle?.dispose?.();
       return false;
     }
@@ -298,12 +284,17 @@ export function install_gpu_effects({
       width: captured?.width ?? rect.width,
       height: captured?.height ?? rect.height,
       presentation: null,
+      wants_frame() {
+        if (visible_clip(item, document_value, view)) return true;
+        restore_target(target);
+        return false;
+      },
     };
     // A DOM morph can keep a target and remove its presenter. That presenter
     // shows nothing, so the item gets a new one.
     if (previous?.kind === item.kind && presentation_is_attached(previous)) {
       await frame.drawing;
-      if (!lifecycle.is_alive(token) || items.get(target) !== previous) {
+      if (!alive(token) || items.get(target) !== previous) {
         handle.dispose?.();
         return false;
       }
@@ -329,12 +320,12 @@ export function install_gpu_effects({
   }
 
   async function refresh_targets() {
-    if (lifecycle.dead || lifecycle.failed) return;
+    if (disposed || lifecycle.failed) return;
 
     const token = lifecycle.epoch;
     await lifecycle.boot();
 
-    if (!lifecycle.renderer || !lifecycle.is_alive(token)) return;
+    if (!lifecycle.renderer || !alive(token)) return;
     const targets = find_targets(query_root);
     const target_set = new Set(targets);
     for (const target of [...items.keys()]) {
@@ -357,7 +348,7 @@ export function install_gpu_effects({
   }
 
   function schedule_refresh() {
-    if (lifecycle.dead) return;
+    if (disposed) return;
     if (refresh_promise) {
       queued_again = true;
       return;
@@ -368,16 +359,16 @@ export function install_gpu_effects({
       try {
         await refresh_targets();
       } catch (error) {
-        if (lifecycle.dead || refresh_epoch !== lifecycle.epoch) return;
+        if (!alive(refresh_epoch)) return;
         if (error?.folly_backend_failure && lifecycle.can_fall_back)
           await lifecycle.recover(error);
         else lifecycle.fail(error);
       } finally {
         refresh_promise = null;
-        if (queued_again && !lifecycle.dead) {
+        if (queued_again && !disposed) {
           queued_again = false;
           schedule_refresh();
-        } else if (!lifecycle.dead) {
+        } else if (!disposed) {
           // Every dirty target is prepared (or restored after a failure). A
           // host page can show its text effects now.
           document_value.dispatchEvent(
@@ -393,7 +384,7 @@ export function install_gpu_effects({
   // capture then does not wait for the shader text.
   function warm_when_idle() {
     const warm = () => {
-      if (lifecycle.dead) return;
+      if (disposed) return;
       try {
         lifecycle.renderer?.warm?.();
       } catch (error) {
@@ -525,9 +516,7 @@ export function install_gpu_effects({
     add_listener(document_value, "visibilitychange", () => {
       if (document_value.visibilityState === "hidden") {
         restore_all_targets();
-        frame.stop();
       } else {
-        frame.reset_clock();
         frame.invalidate();
         schedule_refresh();
       }
@@ -579,25 +568,28 @@ export function install_gpu_effects({
   }
 
   async function refresh() {
-    if (lifecycle.dead) return;
+    if (disposed) return;
 
     lifecycle.rearm();
     mark_all_dirty();
     schedule_refresh();
 
-    while (!lifecycle.dead && refresh_promise) {
+    while (!disposed && refresh_promise) {
       const pending_refresh = refresh_promise;
       await pending_refresh;
     }
   }
 
   function dispose() {
-    if (lifecycle.dead) return;
+    if (disposed) return;
+    disposed = true;
 
     queued_again = false;
     dirty_targets.clear();
     for (const remove_listener of cleanup.splice(0)) remove_listener();
-    lifecycle.dispose();
+    restore_all_targets();
+    dispose_items();
+    leave();
   }
 
   attach_observers();
