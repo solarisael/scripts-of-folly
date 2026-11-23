@@ -24,13 +24,17 @@ function resize(target, size) {
   if (current[0] !== size[0] || current[1] !== size[1]) target.resize(size);
 }
 
-export function composition_gpu(canvas, { api, gpu, kind }, on_lost) {
+export function composition_gpu(canvas, { api, gpu, kind }) {
   const prepared = new Map();
   const blends = new Map();
   const owned = [];
   let disposed = false;
-  let failure = null;
-  let lost = false;
+  // The caller owns the output node. A WebGPU context on that node would
+  // lock out the WebGL2 presenter after loss. Transfer the bitmap instead.
+  const bitmap = typeof OffscreenCanvas === "function" && canvas.getContext("bitmaprenderer");
+  const copy = !bitmap && canvas.getContext("2d");
+  if (!bitmap && !copy) throw new Error("The composition output already holds another context.");
+  const drawing = bitmap ? new OffscreenCanvas(1, 1) : canvas.ownerDocument.createElement("canvas");
   const keep = (value) => {
     owned.push(value);
     return value;
@@ -39,6 +43,13 @@ export function composition_gpu(canvas, { api, gpu, kind }, on_lost) {
     if (disposed) return;
     disposed = true;
     const errors = [];
+    // Resetting the canvas width does not evict a transferred bitmap.
+    try {
+      if (bitmap) bitmap.transferFromImageBitmap(null);
+      else copy.clearRect(0, 0, canvas.width, canvas.height);
+    } catch (error) {
+      errors.push(error);
+    }
     for (const state of prepared.values()) {
       try {
         dispose_input(state);
@@ -55,27 +66,16 @@ export function composition_gpu(canvas, { api, gpu, kind }, on_lost) {
       }
     }
     owned.length = 0;
-    gpu.dispose();
     if (errors.length)
       throw new AggregateError(errors, "Composition resource cleanup failed.");
   };
   try {
-    const unsubscribe = gpu.onError((error) => {
-      failure = error;
-    });
-    keep({ dispose: unsubscribe });
-    gpu.gpu.lost.then((info) => {
-      if (disposed) return;
-      lost = true;
-      failure = new Error(info.message || "Composition device lost.");
-      on_lost();
-    });
     const format =
       kind === "webgpu"
         ? navigator.gpu.getPreferredCanvasFormat()
         : "rgba8unorm";
     const surface = keep(
-      api.surface(gpu, canvas, {
+      api.surface(gpu, drawing, {
         autoResize: false,
         size: [1, 1],
         dpr: 1,
@@ -120,17 +120,20 @@ export function composition_gpu(canvas, { api, gpu, kind }, on_lost) {
       return images;
     }
     return {
-      kind,
-      api,
-      gpu,
       surface,
       prepared,
-      get lost() { return lost; },
+      present(width, height) {
+        // A budget step changes the GPU target, never the CSS layout of
+        // an output whose intrinsic size comes from its canvas attributes.
+        if (canvas.width !== width) canvas.width = width;
+        if (canvas.height !== height) canvas.height = height;
+        if (bitmap) bitmap.transferFromImageBitmap(drawing.transferToImageBitmap());
+        else { copy.globalCompositeOperation = "copy"; copy.drawImage(drawing, 0, 0, width, height); }
+      },
       get images() { return images; },
       dispose,
       assert_live() {
         if (disposed) throw new Error("The compositor is disposed.");
-        if (failure) throw failure;
       },
       async prepare(input) {
         if (input.kind === "field" || input.kind === "plane") {

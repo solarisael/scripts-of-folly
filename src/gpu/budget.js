@@ -1,5 +1,5 @@
-// Frame budget for the text effects. The effects together may use a share of
-// each frame on the GPU. Each visible effect gets a part of that time in
+// Frame budget for one page. Active text effects and compositions share
+// each frame on the GPU. Each item gets a part of that time in
 // proportion to its share. An effect that costs more than its part steps
 // down: first a lower render scale, then a lower frame rate, then a still.
 // It steps up again when the next level up fits well inside its part.
@@ -34,6 +34,23 @@ export const LEVELS = Object.freeze([
   { scale: 0.5, rate: 0 },
 ]);
 
+// Numbers are indices into the public ladder; a client can skip any step
+// except full quality. Copy the declaration once, outside the frame loop.
+export function accepted_levels(levels) {
+  if (levels === undefined) return undefined;
+  const accepted = Array.isArray(levels) ? [...levels] : [];
+  if (accepted[0] !== 0 || !accepted.every((n, i) =>
+    Number.isInteger(n) && n < LEVELS.length && (i === 0 || n > accepted[i - 1])))
+    throw new RangeError("Budget levels must increase from 0 through at most 5.");
+  return Object.freeze(accepted);
+}
+
+function neighbor(item, level, direction) {
+  if (item.levels) return item.levels[item.levels.indexOf(level) + direction];
+  const next = level + direction;
+  return LEVELS[next] ? next : undefined;
+}
+
 // An effect steps down after it is over its part for this long, and steps up
 // after the next level up fits for this long. The gap stops it flapping.
 const STEP_DOWN_MS = 500;
@@ -62,8 +79,8 @@ function costliest(items, state_of, share_of, direction) {
   let largest = -1;
   for (const item of items) {
     const state = state_of(item);
-    const next = state.level + direction;
-    if (!LEVELS[next]) continue;
+    const next = neighbor(item, state.level, direction);
+    if (next === undefined) continue;
     const { scale, rate } = LEVELS[Math.min(next, state.level)];
     const weight = share_of(item) * state.pixels * scale * scale * rate;
     if (weight > largest) {
@@ -74,11 +91,11 @@ function costliest(items, state_of, share_of, direction) {
   return selected;
 }
 
-function adjusted(state, direction, time) {
+function adjusted(item, state, direction, time) {
   if (state.direction !== direction) return { ...state, direction, since: time };
   const hold = direction > 0 ? STEP_DOWN_MS : STEP_UP_MS;
   if (!direction || time - state.since < hold) return state;
-  return { ...state, level: state.level + direction, direction: 0, drawn: false };
+  return { ...state, level: neighbor(item, state.level, direction), direction: 0, drawn: false };
 }
 
 function measurement_after(previous, event, capabilities = previous) {
@@ -143,7 +160,7 @@ export function create_frame_budget({
     }
     return state;
   };
-  const share_of = (item) => effect_share(item.names, tuning.shares);
+  const share_of = (item) => item.share ?? effect_share(item.names, tuning.shares);
 
   return {
     get source() { return measurement.source; },
@@ -167,7 +184,13 @@ export function create_frame_budget({
 
     timestamp_batch(batch) {
       if (measurement.source !== "timestamps") return;
-      for (const [name, ms] of Object.entries(batch)) spans.set(name, ms);
+      for (const [name, ms] of Object.entries(batch)) {
+        // A composition submits once, but its field and visible passes have
+        // distinct timestamp pairs. Their sum belongs to the composition.
+        const slash = name.indexOf("/");
+        const key = slash < 0 ? name : name.slice(0, slash);
+        spans.set(key, (spans.get(key) ?? 0) + ms);
+      }
     },
     level_of: (item) => LEVELS[state_of(item).level],
 
@@ -276,13 +299,13 @@ export function create_frame_budget({
         let demand = item === selected ? direction : 0;
         if (source === "timestamps" && gap > 0 && state.measured) {
           const part = page_ms * share_of(item) / total_share;
-          const over = state.level + 1 < LEVELS.length &&
-            average_ms(state, state.level) > part;
-          const under = state.level > 0 &&
-            average_ms(state, state.level - 1) < part * STEP_UP_HEADROOM;
+          const down = neighbor(item, state.level, 1);
+          const up = neighbor(item, state.level, -1);
+          const over = down !== undefined && average_ms(state, state.level) > part;
+          const under = up !== undefined && average_ms(state, up) < part * STEP_UP_HEADROOM;
           demand = over ? 1 : under ? -1 : 0;
         }
-        const next = adjusted(state, demand, time);
+        const next = adjusted(item, state, demand, time);
         if (next !== state) states.set(item, next);
       }
     },

@@ -69,3 +69,19 @@ test("missed frames lower only the costliest share; recovery needs uninterrupted
   frame(16);
   expect(levels()).toEqual([0, 0]);
 });
+
+test("checked timestamps charge both scene passes to its next accepted quality level", () => {
+  let time = 0;
+  const budget = create_frame_budget({ now: () => time });
+  const scene = { share: 2, levels: [0, 2], handle: { span_name: "sky" } };
+  budget.backend_opened({ timestamps: true, fences: false });
+  for (; time <= 560; time += 16) {
+    budget.settle([scene], 16, time ? 16 : null);
+    const scale = budget.level_of(scene).scale;
+    budget.drawn(scene, time, 16, 100, scale);
+    budget.timestamp_batch({ "sky/0": 6 * scale ** 2, "sky/1": 5 * scale ** 2 });
+  }
+  const [effect] = budget.report().effects;
+  expect(effect.level).toBe(2);
+  expect(effect.cost_ms).toBe(2.75);
+});

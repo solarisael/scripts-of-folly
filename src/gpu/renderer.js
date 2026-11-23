@@ -9,6 +9,7 @@ function fresh_canvas(previous_canvas) {
 
   const next_canvas = document_value.createElement("canvas");
   next_canvas.className = previous_canvas.className;
+  next_canvas.hidden = previous_canvas.hidden;
   next_canvas.ariaHidden = "true";
   if (previous_canvas.parentNode) {
     previous_canvas.replaceWith(next_canvas);

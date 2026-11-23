@@ -22,6 +22,7 @@ function make_item() {
     },
     names: ["glow"],
     kind: "text",
+    wants_frame: () => true,
     handle: {},
     width: 100,
     height: 20,
@@ -36,6 +37,7 @@ function make_item() {
 function make_page({ reduced_motion, fps = null }) {
   const frames = [];
   const timers = [];
+  const first_render = Promise.withResolvers();
   const renders = [];
   let release = () => {};
   const element = { getAttribute: () => fps, clientWidth: 800, clientHeight: 600 };
@@ -63,6 +65,7 @@ function make_page({ reduced_motion, fps = null }) {
       canvas: {},
       resize() {},
       render(entries) {
+        first_render.resolve();
         renders.push(entries.length);
         return new Promise((resolve) => (release = resolve));
       },
@@ -70,20 +73,23 @@ function make_page({ reduced_motion, fps = null }) {
     async recover() {},
   };
   const items = new Map();
+  const compositions = new Set();
   const budget = create_frame_budget({ now: () => 0 });
   const frame = create_frame_loop({
     view,
     document_value,
-    root: document_value,
-    items,
+    texts: new Set([{ root: document_value, items }]),
+    compositions,
     budget,
     lifecycle,
-    restore_target() {},
   });
   return {
+    frames, first_render: first_render.promise,
+    timers,
     frame,
     budget,
     items,
+    compositions,
     renders,
     // Runs the frame that the loop asked for, after the timer that paces it.
     // False when the loop asked for none.
@@ -140,4 +146,60 @@ test("a renderer that skips display ticks does not set the display interval", as
   expect(page.budget.report().frame_ms).toBe(8);
   await page.finish_render();
   page.frame.stop();
+});
+
+test("one page tick draws text and both moving compositions against the same budget", async () => {
+  const page = make_page({ reduced_motion: false });
+  const text = make_item();
+  page.items.set(text.target, text);
+  const draws = [];
+  for (const share of [2, 4]) {
+    page.compositions.add({
+      share,
+      continues: true,
+      wants_frame: () => true,
+      draw: (now) => draws.push([share, now]),
+    });
+  }
+  page.frame.schedule();
+  page.frame.schedule();
+  expect(page.frames.length).toBe(1);
+  page.run_frame(125);
+  await page.first_render;
+  await page.finish_render();
+  expect(draws).toEqual([[2, 125], [4, 125]]);
+  expect(page.renders).toEqual([1]);
+  expect(page.budget.report().effects.map((item) => item.share).sort()).toEqual([1, 2, 4]);
+});
+
+test("a resting composition takes no share or submission and leaves no tick queued", async () => {
+  const page = make_page({ reduced_motion: false });
+  let moving = true;
+  let draws = 0;
+  page.compositions.add({
+    continues: true,
+    wants_frame: () => moving,
+    draw() { draws++; moving = false; },
+  });
+  page.frame.schedule();
+  page.run_frame(32);
+  await page.finish_render();
+  // A final demand check may run. It must not submit even an empty atlas.
+  if (page.run_frame(64)) await page.finish_render();
+  expect(draws).toBe(1);
+  expect(page.renders).toEqual([]);
+  expect(page.budget.report().effects).toEqual([]);
+  expect(page.run_frame(96)).toBe(false);
+});
+
+test("an invalidated still keeps the text fps limit between requests", async () => {
+  const page = make_page({ reduced_motion: true, fps: "5" });
+  const item = make_item();
+  page.items.set(item.target, item);
+  page.frame.schedule();
+  page.run_frame(16);
+  await page.finish_render();
+  page.frame.invalidate();
+  page.frame.schedule();
+  expect(page.timers.length).toBe(1);
 });

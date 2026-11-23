@@ -24,13 +24,14 @@
 //   --bench <rounds>     Time a full recapture of all effects.
 //   --scenes <directory> Check compositor passes, blends and loss on both
 //                        backends and save visible before/after screenshots.
+//   --shared <directory> Check a mixed page, its quality levels and device loss.
 
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import puppeteer from "puppeteer-core";
-import { compare_scenes, scene_html } from "./gpu_compare/scenes.js";
+import { compare_scenes, check_shared_page, scene_html } from "./gpu_compare/scenes.js";
 
 const here = import.meta.dir;
 const repository = resolve(here, "..");
@@ -41,12 +42,13 @@ const option = (name, fallback) => {
 };
 
 const before = option("before", null);
-if (!before) {
+const shared_directory = option("shared", null);
+if (!before && !shared_directory) {
   console.error("gpu:compare needs --before <revision or directory>.");
   process.exit(2);
 }
 const settle = Number(option("settle", "900"));
-const scene_directory = option("scenes", null);
+const scene_directory = shared_directory ?? option("scenes", null);
 const port = Number(option("port", "4399"));
 const stale_rounds = Number(option("stale", "0"));
 const bench_rounds = Number(option("bench", "0"));
@@ -86,7 +88,7 @@ async function tree_of(source) {
 }
 
 const trees = {
-  before: await tree_of(before),
+  ...(before && { before: await tree_of(before) }),
   after: resolve(option("after", repository)),
 };
 const html = scene_directory ? scene_html : readFileSync(join(here, "gpu_compare", "index.html"), "utf8");
@@ -176,7 +178,7 @@ async function open(name, reduced) {
       value: reduced ? "reduce" : "no-preference",
     },
   ]);
-  await page.goto(`http://127.0.0.1:${port}/${name}/`, { waitUntil: "load" });
+  await page.goto(`http://127.0.0.1:${server.port}/${name}/`, { waitUntil: "load" });
   await page.waitForFunction("window.__ready === true", { timeout: 20000 });
   return { page, logs };
 }
@@ -277,7 +279,9 @@ async function bench(name) {
 
 let failed = false;
 try {
-  if (scene_directory) {
+  if (shared_directory) {
+    await check_shared_page(browser, `http://127.0.0.1:${server.port}/after/`, shared_directory);
+  } else if (scene_directory) {
     await compare_scenes(browser, `http://127.0.0.1:${server.port}`, scene_directory);
   } else if (stale_rounds > 0) {
     for (const name of ["before", "after"]) await count_stale(name);

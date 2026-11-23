@@ -262,12 +262,19 @@ export async function create_gpu_backend(
   const meter = budget && backend_kind === "webgl2" && gpu.gl?.fenceSync
     ? create_fence_meter(gpu.gl, budget) : null;
   budget?.backend_opened({ timestamps: Boolean(timer), fences: Boolean(meter) });
-  const span_of = (handle) => {
-    if (!handle.span) {
-      handle.span_name = `fx${(next_span_id += 1)}`;
-      handle.span = timer.span(handle.span_name);
+  const span_of = (handle, pass = 0) => {
+    if (budget?.source !== "timestamps") return undefined;
+    if (!handle.spans) {
+      handle.span_name = `fx${++next_span_id}`;
+      handle.spans = [];
     }
-    return handle.span;
+    return handle.spans[pass] ??= timer.span(`${handle.span_name}/${pass}`);
+  };
+  const submit = (frame_time, encode) => {
+    const fences = budget?.source === "fences";
+    const start = fences ? performance.now() : 0;
+    api.frame(gpu, encode);
+    if (fences) meter.submitted(frame_time, start);
   };
 
   // A draw costs main-thread work when it is made (vgpu 0.5 parsed this shader
@@ -462,9 +469,7 @@ export async function create_gpu_backend(
       (entry) =>
         entry?.handle && !entry.handle.disposed && handles.has(entry.handle),
     );
-    const measure_fence = budget?.source === "fences" && live.length > 0;
-    const start = measure_fence ? performance.now() : 0;
-    api.frame(gpu, (current_frame) => {
+    submit(frame_time, (current_frame) => {
       if (budget?.source !== "timestamps" || !live.length) {
         current_frame.pass(
           { target: canvas_surface, clear: [0, 0, 0, 0] },
@@ -490,7 +495,6 @@ export async function create_gpu_backend(
         );
       });
     });
-    if (measure_fence) meter.submitted(frame_time, start);
     await gpu.settled();
   };
 
@@ -515,6 +519,7 @@ export async function create_gpu_backend(
     canvas,
     backend: backend_kind,
     gpu,
+    opened, span_of, submit,
     resize,
     prepare,
     render,
