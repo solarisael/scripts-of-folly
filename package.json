@@ -10,6 +10,8 @@
     "glsl:build": "bun scripts/build_glsl.js",
     "glsl:check": "bun scripts/build_glsl.js --check",
     "gpu:compare": "bun scripts/gpu_compare.js",
+    "lint": "sg scan src && sg test",
+    "wgsl:check": "bun scripts/check_wgsl_purity.js src gpu/wgsl.js scene/wgsl.js vision/wgsl.js terminal/terminal.wgsl",
     "test": "bun test"
   },
   "dependencies": {
@@ -17,6 +19,7 @@
     "vgpu": "^0.6.0"
   },
   "devDependencies": {
+    "@ast-grep/cli": "0.51.3",
     "@vgpu/wgsl": "0.6.0",
     "@vgpu/wgsl-std": "^0.6.0",
     "puppeteer-core": "25.16.0"
@@ -47,7 +50,8 @@
     "./pretext/styles.css": "./src/pretext/styles.css"
   },
   "files": [
-    "src"
+    "src",
+    "scripts/check_wgsl_purity.js"
   ],
   "sideEffects": [
     "./src/js/index.js",

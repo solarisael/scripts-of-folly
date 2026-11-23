@@ -1,0 +1,9 @@
+id: webgpu-owner
+valid:
+  - 'await open_gpu("webgpu", { timing: true });'
+  - 'const name = "gpu.requestAdapter()"; // adapter.requestDevice()'
+invalid:
+  - 'await navigator.gpu.requestAdapter({ powerPreference: "low-power" });'
+  - 'await globalThis.navigator?.gpu?.requestAdapter?.();'
+  - 'const device = await adapter.requestDevice();'
+  - 'const open = adapter?.requestDevice?.bind(adapter);'

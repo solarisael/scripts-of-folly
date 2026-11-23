@@ -1,0 +1,146 @@
+id: webgl2-owner
+snapshots:
+  canvas.getContext("webgl2");:
+    labels:
+    - source: canvas.getContext("webgl2")
+      style: primary
+      start: 0
+      end: 27
+  "canvas.getContext(\"webgl2\", options);":
+    labels:
+    - source: canvas.getContext("webgl2", options)
+      style: primary
+      start: 0
+      end: 36
+  canvas.getContext('webgl2');:
+    labels:
+    - source: canvas.getContext('webgl2')
+      style: primary
+      start: 0
+      end: 27
+  "canvas.getContext('webgl2', { alpha: true });":
+    labels:
+    - source: "canvas.getContext('webgl2', { alpha: true })"
+      style: primary
+      start: 0
+      end: 44
+  canvas.getContext(`webgl2`);:
+    labels:
+    - source: canvas.getContext(`webgl2`)
+      style: primary
+      start: 0
+      end: 27
+  "canvas.getContext(`webgl2`, { alpha: true });":
+    labels:
+    - source: "canvas.getContext(`webgl2`, { alpha: true })"
+      style: primary
+      start: 0
+      end: 44
+  canvas.getContext?.("webgl2");:
+    labels:
+    - source: canvas.getContext?.("webgl2")
+      style: primary
+      start: 0
+      end: 29
+  "canvas.getContext?.(\"webgl2\", options);":
+    labels:
+    - source: canvas.getContext?.("webgl2", options)
+      style: primary
+      start: 0
+      end: 38
+  canvas.getContext?.('webgl2');:
+    labels:
+    - source: canvas.getContext?.('webgl2')
+      style: primary
+      start: 0
+      end: 29
+  "canvas.getContext?.('webgl2', options);":
+    labels:
+    - source: canvas.getContext?.('webgl2', options)
+      style: primary
+      start: 0
+      end: 38
+  canvas.getContext?.(`webgl2`);:
+    labels:
+    - source: canvas.getContext?.(`webgl2`)
+      style: primary
+      start: 0
+      end: 29
+  "canvas.getContext?.(`webgl2`, options);":
+    labels:
+    - source: canvas.getContext?.(`webgl2`, options)
+      style: primary
+      start: 0
+      end: 38
+  canvas?.getContext("webgl2");:
+    labels:
+    - source: canvas?.getContext("webgl2")
+      style: primary
+      start: 0
+      end: 28
+  "canvas?.getContext(\"webgl2\", options);":
+    labels:
+    - source: canvas?.getContext("webgl2", options)
+      style: primary
+      start: 0
+      end: 37
+  canvas?.getContext('webgl2');:
+    labels:
+    - source: canvas?.getContext('webgl2')
+      style: primary
+      start: 0
+      end: 28
+  "canvas?.getContext('webgl2', options);":
+    labels:
+    - source: canvas?.getContext('webgl2', options)
+      style: primary
+      start: 0
+      end: 37
+  canvas?.getContext?.("webgl2");:
+    labels:
+    - source: canvas?.getContext?.("webgl2")
+      style: primary
+      start: 0
+      end: 30
+  "canvas?.getContext?.(\"webgl2\", options);":
+    labels:
+    - source: canvas?.getContext?.("webgl2", options)
+      style: primary
+      start: 0
+      end: 39
+  canvas?.getContext?.('webgl2');:
+    labels:
+    - source: canvas?.getContext?.('webgl2')
+      style: primary
+      start: 0
+      end: 30
+  "canvas?.getContext?.('webgl2', options);":
+    labels:
+    - source: canvas?.getContext?.('webgl2', options)
+      style: primary
+      start: 0
+      end: 39
+  canvas?.getContext?.(`webgl2`);:
+    labels:
+    - source: canvas?.getContext?.(`webgl2`)
+      style: primary
+      start: 0
+      end: 30
+  "canvas?.getContext?.(`webgl2`, options);":
+    labels:
+    - source: canvas?.getContext?.(`webgl2`, options)
+      style: primary
+      start: 0
+      end: 39
+  offscreen?.getContext(`webgl2`);:
+    labels:
+    - source: offscreen?.getContext(`webgl2`)
+      style: primary
+      start: 0
+      end: 31
+  "offscreen?.getContext(`webgl2`, options);":
+    labels:
+    - source: offscreen?.getContext(`webgl2`, options)
+      style: primary
+      start: 0
+      end: 40

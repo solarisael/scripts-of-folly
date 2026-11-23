@@ -1,13 +1,11 @@
-name: GLSL drift
+name: Folly checks
 
-# vgpu runs prepared shaders and the WebGL2 leg runs naga GLSL, both
-# generated from the WGSL. This check fails when a WGSL change lands without
-# `bun run glsl:build`.
 on:
   pull_request:
   push:
     branches:
       - main
+      - scene-planes
 
 permissions:
   contents: read
@@ -26,6 +24,12 @@ jobs:
       # lockfileVersion 2, which bun 1.3 cannot read.
       - name: Install packages
         run: bun install --frozen-lockfile
+      - name: Check the JavaScript rules and their cases
+        run: bun run lint
+      - name: Check WGSL modules for bindings
+        run: bun run wgsl:check
+      - name: Run tests
+        run: bun test
       - name: Cache naga-cli
         id: naga-cache
         uses: actions/cache@v5

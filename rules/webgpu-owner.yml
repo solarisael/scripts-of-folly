@@ -1,0 +1,12 @@
+id: webgpu-owner
+language: JavaScript
+severity: error
+message: Request a WebGPU adapter or device through src/gpu/open_gpu.js.
+files: [src/**/*.js]
+ignores: [src/gpu/open_gpu.js]
+rule:
+  any:
+    - pattern: $GPU.requestAdapter
+    - pattern: $GPU?.requestAdapter
+    - pattern: $ADAPTER.requestDevice
+    - pattern: $ADAPTER?.requestDevice
