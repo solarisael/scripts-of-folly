@@ -1,8 +1,10 @@
 // One completion sample covers all atlas submissions in the sampled rAF.
 // Never queue more samples behind a GPU that has not finished the first.
-export function create_fence_meter(gl, budget) {
+export function create_fence_meter(gl, budget, host = globalThis) {
   let sync = null;
-  let task = null;
+  // Each message yields a task without the 4 ms clamp on nested timers.
+  const { port1, port2 } = new host.MessageChannel();
+  port1.onmessage = poll;
   let frame;
   let started;
 
@@ -12,21 +14,22 @@ export function create_fence_meter(gl, budget) {
   }
 
   function poll() {
-    task = null;
+    if (!sync) return;
     const result = gl.clientWaitSync(sync, 0, 0);
     if (result === gl.TIMEOUT_EXPIRED) {
-      task = setTimeout(poll, 0);
+      port2.postMessage(null);
       return;
     }
     release();
     if (result === gl.WAIT_FAILED) budget.fence_failed();
-    else budget.fence_sample(performance.now() - started);
+    else budget.fence_sample(host.performance.now() - started);
   }
 
   return {
     submitted(frame_time, start) {
       if (sync && frame !== frame_time) return;
-      if (!sync) started = start;
+      const first = !sync;
+      if (first) started = start;
       release();
       frame = frame_time;
       sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
@@ -36,11 +39,11 @@ export function create_fence_meter(gl, budget) {
         return;
       }
       gl.flush();
-      task ??= setTimeout(poll, 0);
+      if (first) port2.postMessage(null);
     },
     dispose() {
-      if (task !== null) clearTimeout(task);
-      task = null;
+      port1.close();
+      port2.close();
       release();
     },
   };
