@@ -66,7 +66,7 @@ The options accept `backend`, `open_gpu`, and `max_pixels`.
 The default pixel budget is 1,048,576 pixels.
 The compositor tries WebGPU first and then WebGL2 when device initialization fails.
 An explicit backend selects one implementation.
-Both implementations use the same WGSL source.
+Both implementations of the built-in treatments use the same WGSL source.
 
 Register each image with `compositor.source(layer, image, { rect })`.
 Inputs accept browser image sources that the backend can upload.
@@ -112,7 +112,7 @@ Call `input.update()` after a source canvas changes.
 Call `input.update(newImage)` to replace its image.
 Only explicit image updates upload source pixels.
 Order, opacity, rectangle, and blur changes reuse uploaded images.
-Render calls with unchanged inputs and dimensions submit no frame.
+An image-only composition skips a render when its inputs and dimensions do not change.
 The `stats` property reports frames, source uploads, and render passes.
 It does not report presented frames or GPU execution time.
 
@@ -120,15 +120,75 @@ The caller schedules rendering.
 The compositor creates no animation loop.
 Concurrent render calls fail instead of accumulating work.
 The pixel budget limits the physical target dimensions.
-The caller handles initialization, device loss, and rendering errors.
+Handle errors from initialization and rendering.
 Keep accessible source content available when rendering fails.
 
 Call `input.dispose()` to remove an input and release its uploaded image.
 Layer disposal removes its registered inputs.
-Call `compositor.dispose()` to release targets, source textures, and the GPU device.
+Call `compositor.dispose()` to release the device and all compositor resources.
 Output layer disposal also releases the compositor.
-Native effect pipelines remain owned by the device until compositor disposal.
 Disposal does not remove or hide the source DOM.
+
+## GPU fields and planes
+
+Use `sky.field(layer, { build, draw, scale, format })` for an intermediate image.
+Each field draws into a separate, transparent target before the visible layers.
+The compositor never shows that target directly.
+The default scale is 1 and the default format is `rgba8unorm`.
+The backend must support the requested render target format.
+Scale multiplies each output dimension in physical pixels.
+The compositor rounds down to whole pixels and keeps at least one pixel on each axis.
+The device limit and the pixel budget also apply to each field target.
+
+Use `sky.plane(layer, { build, draw, reads, blend })` for visible output.
+Pass an array of field handles from the same compositor in `reads`.
+The draw receives their current color textures in the same order.
+Dispose a reader before its field. A draw with a missing field fails.
+
+`replace` writes the fragment color. `over` uses premultiplied source-over alpha and is the default.
+`add` adds the source color and alpha to the destination.
+Use premultiplied colors for visible output.
+Create effects and draws with the `api` from `build(gpu, api)` so the compositor can set their pipeline blend.
+
+A plane draws into the shared open pass with `frame.draw(drawable, options)` and cannot open another pass.
+Use a field for an intermediate pass, then read its texture from a plane.
+Adjacent GPU planes need no extra render pass, including after an image or backdrop draw.
+A composition with only GPU inputs draws its visible planes directly into the output.
+
+```js
+const dust = sky.field(dustLayer, {
+  scale: 0.5,
+  format: "rgba16float",
+  build: (gpu, api) => api.effect(gpu, dustShader),
+  draw: (frame, { state }) => frame.draw(state),
+});
+sky.plane(skyLayer, {
+  reads: [dust],
+  blend: "replace",
+  build: (gpu, api) => api.effect(gpu, skyShader),
+  draw(frame, { state, reads }) {
+    state.set({ dust: reads[0] });
+    frame.draw(state);
+  },
+});
+await sky.render();
+```
+
+`build` can return a value or a promise for that value.
+`draw(frame, { state, reads, size, level, now, opacity })` must finish synchronously.
+`state` is the build result for this device.
+`size` contains the width and height of this target in physical pixels.
+`level` is 0 (full quality). `now` is the frame time in milliseconds.
+Pass `now` to `render` to supply the time. The default is `performance.now()`.
+Use `opacity` from the layer in your shader when you need opacity control.
+Each explicit `render()` draws all GPU inputs. The compositor does not schedule frames.
+
+Keep device resources in the build result, not in the input declaration.
+Give the result a `dispose()` method to release resources that you own.
+The compositor calls that method on input disposal and device loss, after any pending render leaves the device.
+After loss, the next render opens the same backend and builds all live inputs again.
+It uploads source images again. No texture or pipeline crosses devices.
+Initialization or build errors reach the caller.
 
 ## Backdrop treatments
 

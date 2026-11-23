@@ -33,6 +33,45 @@ const source_effect = (value) => {
   return value;
 };
 
+function own_input(layer, input, remove) {
+  let disposed = false;
+  Object.defineProperty(input, "disposed", {
+    enumerable: true,
+    get: () => disposed || layer.disposed,
+  });
+  input.dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    layer.disown(input.dispose);
+    remove(input);
+  };
+  layer.own(input.dispose);
+  return input;
+}
+
+export function create_gpu_input(kind, layer, options, entries, remove) {
+  const { build, draw } = options;
+  if (typeof build !== "function" || typeof draw !== "function")
+    throw new TypeError("A GPU input needs build and draw functions.");
+  let input;
+  if (kind === "field") {
+    const { scale = 1, format = "rgba8unorm" } = options;
+    if (!Number.isFinite(scale) || scale <= 0)
+      throw new RangeError("A field scale must be positive.");
+    input = { kind, layer, build, draw, scale, format };
+  } else {
+    const { blend = "over", reads = [] } = options;
+    if (!["replace", "over", "add"].includes(blend))
+      throw new RangeError(`Unknown plane blend: ${blend}`);
+    if (!Array.isArray(reads) || !reads.every(
+      (field) => entries.has(field) && field.kind === "field",
+    ))
+      throw new TypeError("A plane can read only live fields of its compositor.");
+    input = { kind, layer, build, draw, blend, reads: Object.freeze([...reads]) };
+  }
+  return Object.freeze(own_input(layer, input, remove));
+}
+
 export function create_input(layer, source, options, remove, output) {
   if (layer.disposed) throw new Error("Cannot compose a disposed layer.");
   const blur = source === null;
@@ -50,9 +89,9 @@ export function create_input(layer, source, options, remove, output) {
     return value;
   };
   if (blur) effect = check_effect(effect);
-  let disposed = false;
+  const kind = blur ? "backdrop" : "source";
   const live = () => {
-    if (disposed || layer.disposed)
+    if (input.disposed)
       throw new Error("The composition input is disposed.");
   };
   const check_radius = (value) => {
@@ -64,6 +103,7 @@ export function create_input(layer, source, options, remove, output) {
   };
   if (blur) radius = check_radius(radius);
   const input = {
+    kind,
     layer,
     blur,
     get source() {
@@ -86,9 +126,6 @@ export function create_input(layer, source, options, remove, output) {
     },
     get image_revision() {
       return image_revision;
-    },
-    get disposed() {
-      return disposed || layer.disposed;
     },
     update(next = image) {
       live();
@@ -123,13 +160,6 @@ export function create_input(layer, source, options, remove, output) {
       source_style = source_effect(next);
       revision++;
     },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      layer.disown(input.dispose);
-      remove(input);
-    },
   };
-  layer.own(input.dispose);
-  return input;
+  return own_input(layer, input, remove);
 }

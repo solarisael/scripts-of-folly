@@ -22,12 +22,15 @@
 //                        On a fast GPU these counts depend on the clock.
 //   --stale <rounds>     Count the stale captures after a late style change.
 //   --bench <rounds>     Time a full recapture of all effects.
+//   --scenes <directory> Check compositor passes, blends and loss on both
+//                        backends and save visible before/after screenshots.
 
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import puppeteer from "puppeteer-core";
+import { compare_scenes, scene_html } from "./gpu_compare/scenes.js";
 
 const here = import.meta.dir;
 const repository = resolve(here, "..");
@@ -43,6 +46,7 @@ if (!before) {
   process.exit(2);
 }
 const settle = Number(option("settle", "900"));
+const scene_directory = option("scenes", null);
 const port = Number(option("port", "4399"));
 const stale_rounds = Number(option("stale", "0"));
 const bench_rounds = Number(option("bench", "0"));
@@ -85,8 +89,8 @@ const trees = {
   before: await tree_of(before),
   after: resolve(option("after", repository)),
 };
-const html = readFileSync(join(here, "gpu_compare", "index.html"), "utf8");
-const page_script = readFileSync(join(here, "gpu_compare", "page.js"), "utf8");
+const html = scene_directory ? scene_html : readFileSync(join(here, "gpu_compare", "index.html"), "utf8");
+const page_script = readFileSync(join(here, "gpu_compare", scene_directory ? "scene_page.js" : "page.js"), "utf8");
 for (const [name, tree] of Object.entries(trees)) {
   const source = join(work, `page-${name}`);
   mkdirSync(source);
@@ -131,7 +135,9 @@ const browser = browser_url
         "--no-sandbox",
         "--ignore-gpu-blocklist",
         "--enable-unsafe-swiftshader",
-        "--use-angle=swiftshader",
+        ...(scene_directory
+          ? ["--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=vulkan", "--use-vulkan=native"]
+          : ["--use-angle=swiftshader"]),
         "--force-device-scale-factor=1",
       ],
     });
@@ -271,7 +277,9 @@ async function bench(name) {
 
 let failed = false;
 try {
-  if (stale_rounds > 0) {
+  if (scene_directory) {
+    await compare_scenes(browser, `http://127.0.0.1:${server.port}`, scene_directory);
+  } else if (stale_rounds > 0) {
     for (const name of ["before", "after"]) await count_stale(name);
   } else if (bench_rounds > 0) {
     // Two passes for each tree show the spread of the numbers.

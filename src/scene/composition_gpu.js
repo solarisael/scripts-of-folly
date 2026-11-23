@@ -1,13 +1,36 @@
 import scene_shader from "./wgsl.generated.js";
 import { FRAG, VERT } from "./glsl.generated.js";
 import { shader_module } from "../webgl2/shader_module.js";
+import { scaled_size } from "./passes.js";
 
 const shader = shader_module(scene_shader, { frag: FRAG, vert: VERT });
 
-export function composition_gpu(canvas, { api, gpu, kind }) {
+// Blend is pipeline state on both backends, not a render-pass option.
+function plane_api(api, mode) {
+  const blend = { replace: undefined, over: "premultiplied", add: "additive" }[mode];
+  const output = (options) => {
+    if (options?.colors)
+      throw new Error("A GPU plane has one color attachment and sets its own blend.");
+    return { ...options, blend };
+  };
+  return Object.create(api, {
+    effect: { value: (gpu, shader, options) => api.effect(gpu, shader, output(options)) },
+    draw: { value: (gpu, options) => api.draw(gpu, output(options)) },
+  });
+}
+
+function resize(target, size) {
+  const current = target.size;
+  if (current[0] !== size[0] || current[1] !== size[1]) target.resize(size);
+}
+
+export function composition_gpu(canvas, { api, gpu, kind }, on_lost) {
+  const prepared = new Map();
+  const blends = new Map();
   const owned = [];
   let disposed = false;
   let failure = null;
+  let lost = false;
   const keep = (value) => {
     owned.push(value);
     return value;
@@ -16,6 +39,14 @@ export function composition_gpu(canvas, { api, gpu, kind }) {
     if (disposed) return;
     disposed = true;
     const errors = [];
+    for (const state of prepared.values()) {
+      try {
+        dispose_input(state);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    prepared.clear();
     for (const resource of owned.reverse()) {
       try {
         (resource.dispose ?? resource.destroy).call(resource);
@@ -34,8 +65,10 @@ export function composition_gpu(canvas, { api, gpu, kind }) {
     });
     keep({ dispose: unsubscribe });
     gpu.gpu.lost.then((info) => {
-      if (!disposed)
-        failure = new Error(info.message || "Composition device lost.");
+      if (disposed) return;
+      lost = true;
+      failure = new Error(info.message || "Composition device lost.");
+      on_lost();
     });
     const format =
       kind === "webgpu"
@@ -47,77 +80,71 @@ export function composition_gpu(canvas, { api, gpu, kind }) {
         size: [1, 1],
         dpr: 1,
         format,
+        clearColor: [0, 0, 0, 0],
         alphaMode: "premultiplied",
       }),
     );
-    const target = (label) =>
-      keep(
-        api.target(gpu, {
-          size: [1, 1],
-          format: "rgba8unorm",
-          clearColor: [0, 0, 0, 0],
-          label,
-        }),
+    const target = (size, format, label) =>
+      api.target(gpu, { size, format, label, clearColor: [0, 0, 0, 0] });
+    let images;
+    function image_resources() {
+      if (images) return images;
+      const pair = ["scene-a", "scene-b"].map((label) =>
+        keep(target([1, 1], "rgba8unorm", label)),
       );
-    const fields = [target("scene-a"), target("scene-b")];
-    const scratch = target("scene-blur-horizontal");
-    const sampler = api.sampler(gpu, {
-      minFilter: "linear",
-      magFilter: "linear",
-      addressModeU: "clamp-to-edge",
-      addressModeV: "clamp-to-edge",
-    });
-    if (kind === "webgl2")
-      keep({ dispose: () => gpu.gl.deleteSampler(sampler.handle) });
-    const blank = keep(
-      gpu.device.createTexture({
-        kind: "2d",
-        size: [1, 1],
-        format: "rgba8unorm",
+      const sampler = api.sampler(gpu, {
+        minFilter: "linear",
+        magFilter: "linear",
+        addressModeU: "clamp-to-edge",
+        addressModeV: "clamp-to-edge",
+      });
+      if (kind === "webgl2")
+        keep({ dispose: () => gpu.gl.deleteSampler(sampler.handle) });
+      const blank = keep(gpu.device.createTexture({
+        kind: "2d", size: [1, 1], format: "rgba8unorm",
         usage: ["texture_binding", "copy_dst"],
-      }),
-    );
-    gpu.gpu.queue.writeTexture(
-      { texture: blank.gpu },
-      new Uint8Array(4),
-      { bytesPerRow: 4, rowsPerImage: 1 },
-      { width: 1, height: 1 },
-    );
-    const make_effect = () =>
-      api.effect(gpu, shader, {
+      }));
+      gpu.gpu.queue.writeTexture(
+        { texture: blank.gpu }, new Uint8Array(4),
+        { bytesPerRow: 4, rowsPerImage: 1 }, { width: 1, height: 1 },
+      );
+      const make_effect = () => api.effect(gpu, shader, {
         set: {
-          plane: {
-            frame: [1, 1, 3, 0],
-            rect: [0, 0, 1, 1],
-            effect: [1, 0, 0, 0],
-          },
-          backdrop: blank,
-          image: blank,
-          image_sampler: sampler,
+          plane: { frame: [1, 1, 3, 0], rect: [0, 0, 1, 1], effect: [1, 0, 0, 0] },
+          backdrop: blank, image: blank, image_sampler: sampler,
         },
       });
-    const present = make_effect();
-    // Native effects belong to the device; the WebGL2 leg releases programs here.
-    keep({ dispose: () => present.dispose?.() });
+      const present = make_effect();
+      keep({ dispose: () => present.dispose?.() });
+      images = { pair, make_effect, present, ready: present.compile({ colors: [format] }) };
+      return images;
+    }
     return {
       kind,
       api,
       gpu,
       surface,
-      fields,
-      scratch,
-      blank,
-      present,
+      prepared,
+      get lost() { return lost; },
+      get images() { return images; },
       dispose,
       assert_live() {
         if (disposed) throw new Error("The compositor is disposed.");
         if (failure) throw failure;
       },
       async prepare(input) {
+        if (input.kind === "field" || input.kind === "plane") {
+          if (input.kind === "plane" && !blends.has(input.blend))
+            blends.set(input.blend, plane_api(api, input.blend));
+          const build_api = input.kind === "field" ? api : blends.get(input.blend);
+          return { built: await input.build(gpu, build_api), target: null };
+        }
+        const { make_effect, pair, ready } = image_resources();
+        await ready;
         const effects = [make_effect()];
         if (input.blur) effects.push(make_effect());
         try {
-          await Promise.all(effects.map((effect) => effect.compile(fields[0])));
+          await Promise.all(effects.map((effect) => effect.compile(pair[0])));
         } catch (error) {
           effects.forEach((effect) => effect.dispose?.());
           throw error;
@@ -161,14 +188,20 @@ export function composition_gpu(canvas, { api, gpu, kind }) {
         const error = await gpu.gpu.popErrorScope?.();
         if (error) throw error;
       },
-      resize(size) {
-        for (const field of [...fields, scratch, surface]) {
-          if (field.size[0] !== size[0] || field.size[1] !== size[1])
-            field.resize(size);
+      resize(plan, size, max_pixels, limit) {
+        resize(surface, size);
+        for (const { input } of plan.fields) {
+          const extent = scaled_size(...size, input.scale, max_pixels, limit);
+          const state = prepared.get(input);
+          if (state.target) resize(state.target, extent);
+          else state.target = target(extent, input.format, "scene-field");
         }
-      },
-      async ready() {
-        await present.compile({ colors: [format] });
+        if (plan.groups.length === 1) return;
+        for (const buffer of images.pair) resize(buffer, size);
+        if (plan.groups.some(({ base }) => base?.input.blur && base.input.effect === "blur")) {
+          images.scratch ??= keep(target(size, "rgba8unorm", "scene-blur-horizontal"));
+          resize(images.scratch, size);
+        }
       },
     };
   } catch (error) {
@@ -185,7 +218,11 @@ export function composition_gpu(canvas, { api, gpu, kind }) {
 }
 
 export function dispose_input(state) {
-  state.texture?.dispose();
-  // vgpu releases native effect uniforms and caches with the device.
-  for (const effect of state.effects) effect.dispose?.();
+  try {
+    state.built?.dispose?.();
+  } finally {
+    state.target?.destroy();
+    state.texture?.dispose();
+    for (const effect of state.effects ?? []) effect.dispose?.();
+  }
 }
