@@ -3,6 +3,7 @@
 // prepared from ./wgsl.generated.js, and the WebGL2 leg runs its naga GLSL
 // from ./glsl.generated.js.
 import { EFFECT_SLOTS, EFFECT_SLOT_COUNT } from "./effect_slots.js";
+import { create_fence_meter } from "./fence_meter.js";
 import text_shader from "./wgsl.generated.js";
 import { FRAG, VERT } from "./glsl.generated.js";
 import { shader_module } from "../webgl2/shader_module.js";
@@ -173,10 +174,7 @@ export async function create_gpu_backend(
   {
     is_alive = () => true,
     on_lost = () => {},
-    // Called with (handle, ms) when the GPU time of one effect's draw is
-    // known, one or two frames after the draw. Only on WebGPU with the
-    // "timestamp-query" feature.
-    on_gpu_time = () => {},
+    budget,
   } = {},
 ) {
   const { kind: backend_kind, api, gpu } = opened;
@@ -246,33 +244,28 @@ export async function create_gpu_backend(
   // one pass, untimed.
   let timer = null;
   let unsubscribe_timer = () => {};
-  const timed_handles = new Map();
   let next_span_id = 0;
   if (
+    budget &&
     backend_kind === "webgpu" &&
     typeof api.timer === "function" &&
     gpu.gpu?.features?.has?.("timestamp-query")
   ) {
     try {
       timer = api.timer(gpu);
-      unsubscribe_timer = timer.onResults((spans) => {
-        for (const [name, ms] of Object.entries(spans)) {
-          const handle = timed_handles.get(name);
-          if (handle && !handle.disposed) on_gpu_time(handle, ms);
-        }
-      });
+      unsubscribe_timer = timer.onResults(budget.timestamp_batch);
     } catch (error) {
-      // Timing is optional: the effects draw the same without it, and the
-      // frame budget then leaves them at full quality.
       console.warn("[Scripts of Folly] GPU timing unavailable", error);
       timer = null;
     }
   }
+  const meter = budget && backend_kind === "webgl2" && gpu.gl?.fenceSync
+    ? create_fence_meter(gpu.gl, budget) : null;
+  budget?.backend_opened({ timestamps: Boolean(timer), fences: Boolean(meter) });
   const span_of = (handle) => {
     if (!handle.span) {
       handle.span_name = `fx${(next_span_id += 1)}`;
       handle.span = timer.span(handle.span_name);
-      timed_handles.set(handle.span_name, handle);
     }
     return handle.span;
   };
@@ -452,14 +445,13 @@ export async function create_gpu_backend(
         this.texture.dispose();
         if (this.soft_texture !== this.texture) this.soft_texture.dispose();
         give_draw(this.kind, this.drawable);
-        if (this.span_name) timed_handles.delete(this.span_name);
       },
     };
     handles.add(handle);
     return handle;
   };
 
-  const render = async (entries = [], time_seconds = 0) => {
+  const render = async (entries = [], time_seconds = 0, frame_time) => {
     if (disposed || !is_alive()) return;
     const viewport = {
       width: current_size[0] / current_density,
@@ -470,8 +462,10 @@ export async function create_gpu_backend(
       (entry) =>
         entry?.handle && !entry.handle.disposed && handles.has(entry.handle),
     );
+    const measure_fence = budget?.source === "fences" && live.length > 0;
+    const start = measure_fence ? performance.now() : 0;
     api.frame(gpu, (current_frame) => {
-      if (!timer || !live.length) {
+      if (budget?.source !== "timestamps" || !live.length) {
         current_frame.pass(
           { target: canvas_surface, clear: [0, 0, 0, 0] },
           (pass) => {
@@ -496,6 +490,7 @@ export async function create_gpu_backend(
         );
       });
     });
+    if (measure_fence) meter.submitted(frame_time, start);
     await gpu.settled();
   };
 
@@ -510,6 +505,7 @@ export async function create_gpu_backend(
     unsubscribe_error?.();
     unsubscribe_uncaptured();
     unsubscribe_timer();
+    meter?.dispose();
     timer?.dispose();
     canvas_surface.dispose();
     gpu.dispose();
@@ -518,7 +514,6 @@ export async function create_gpu_backend(
   return {
     canvas,
     backend: backend_kind,
-    timed: Boolean(timer),
     gpu,
     resize,
     prepare,

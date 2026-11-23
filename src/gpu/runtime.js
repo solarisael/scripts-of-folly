@@ -116,14 +116,7 @@ export function install_gpu_effects({
     document_value,
     backend,
     open_gpu,
-    on_gpu_time(handle, ms) {
-      for (const item of items.values()) {
-        if (item.handle === handle) {
-          budget.gpu_time(item, ms);
-          return;
-        }
-      }
-    },
+    budget,
     on_release() {
       frame.stop();
       restore_all_targets();

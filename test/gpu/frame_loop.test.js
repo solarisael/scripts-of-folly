@@ -33,12 +33,12 @@ function make_item() {
 }
 
 // A page with one renderer whose `render` waits until the test releases it.
-function make_page({ reduced_motion }) {
+function make_page({ reduced_motion, fps = null }) {
   const frames = [];
   const timers = [];
   const renders = [];
   let release = () => {};
-  const element = { getAttribute: () => null, clientWidth: 800, clientHeight: 600 };
+  const element = { getAttribute: () => fps, clientWidth: 800, clientHeight: 600 };
   const view = {
     devicePixelRatio: 1,
     innerWidth: 800,
@@ -70,26 +70,28 @@ function make_page({ reduced_motion }) {
     async recover() {},
   };
   const items = new Map();
+  const budget = create_frame_budget({ now: () => 0 });
   const frame = create_frame_loop({
     view,
     document_value,
     root: document_value,
     items,
-    budget: create_frame_budget({ now: () => 0 }),
+    budget,
     lifecycle,
     restore_target() {},
   });
   return {
     frame,
+    budget,
     items,
     renders,
     // Runs the frame that the loop asked for, after the timer that paces it.
     // False when the loop asked for none.
-    run_frame() {
+    run_frame(time = 16) {
       for (const timer of timers.splice(0)) timer();
       const callback = frames.shift();
       if (!callback) return false;
-      callback(16);
+      callback(time);
       return true;
     },
     async finish_render() {
@@ -124,4 +126,18 @@ test("reduced motion: an effect added during a frame gets the next frame", async
 
   // The picture is now valid, so reduced motion asks for no more frames.
   expect(page.run_frame()).toBe(false);
+});
+
+test("a renderer that skips display ticks does not set the display interval", async () => {
+  const page = make_page({ reduced_motion: false, fps: "display" });
+  const item = make_item();
+  page.items.set(item.target, item);
+  page.frame.schedule();
+  page.run_frame(100);
+  page.run_frame(108); // The display ticks while the renderer is still busy.
+  await page.finish_render();
+  page.run_frame(132);
+  expect(page.budget.report().frame_ms).toBe(8);
+  await page.finish_render();
+  page.frame.stop();
 });

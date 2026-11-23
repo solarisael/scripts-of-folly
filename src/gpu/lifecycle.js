@@ -22,7 +22,7 @@ export function create_renderer_lifecycle({
   document_value,
   backend = "auto",
   open_gpu = undefined,
-  on_gpu_time = () => {},
+  budget,
   on_release = () => {},
   on_restart = async () => {},
   on_restore = () => {},
@@ -84,7 +84,7 @@ export function create_renderer_lifecycle({
         backend: requested_backend,
         is_alive: () => is_alive(token),
         on_lost: (loss_error) => recover(loss_error),
-        on_gpu_time,
+        budget,
         open: open_gpu,
       });
 

@@ -4,10 +4,8 @@
 // down: first a lower render scale, then a lower frame rate, then a still.
 // It steps up again when the next level up fits well inside its part.
 //
-// The cost of an effect is its measured GPU time: on WebGPU with the
-// "timestamp-query" feature, each effect draws in its own timed pass. An
-// effect without a measurement stays at full quality. Wall time cannot stand
-// in for it: a batch waits about the same for the GPU whatever it draws.
+// Timestamps measure individual passes. A fence measures the submission as
+// a whole. Neither a fence nor a missed frame identifies an individual pass.
 
 // The part of each frame that all text effects together may use.
 export const TEXT_FRAME_SHARE = 0.5;
@@ -57,6 +55,49 @@ const average_ms = (state, level) => {
   return state.unit_ms * state.pixels * scale * scale * rate;
 };
 
+// Aggregate measurements can change one share, not assign costs to passes.
+// At the same share, a larger tile at a higher scale or rate costs more.
+function costliest(items, state_of, share_of, direction) {
+  let selected = null;
+  let largest = -1;
+  for (const item of items) {
+    const state = state_of(item);
+    const next = state.level + direction;
+    if (!LEVELS[next]) continue;
+    const { scale, rate } = LEVELS[Math.min(next, state.level)];
+    const weight = share_of(item) * state.pixels * scale * scale * rate;
+    if (weight > largest) {
+      selected = item;
+      largest = weight;
+    }
+  }
+  return selected;
+}
+
+function adjusted(state, direction, time) {
+  if (state.direction !== direction) return { ...state, direction, since: time };
+  const hold = direction > 0 ? STEP_DOWN_MS : STEP_UP_MS;
+  if (!direction || time - state.since < hold) return state;
+  return { ...state, level: state.level + direction, direction: 0, drawn: false };
+}
+
+function measurement_after(previous, event, capabilities = previous) {
+  const rejected = previous.rejected || event === "timestamps_exceed_gap";
+  const fences = capabilities.fences && event !== "fence_failed";
+  const source = event === "backend_opened" && capabilities.timestamps && !rejected
+    ? "timestamps" : fences ? "fences" : "frame_gaps";
+  return { source, rejected, fences };
+}
+
+function aggregate_direction(source, gap, frame_ms, fence_ms, page_ms) {
+  if (!(gap > 0)) return 0;
+  // Allow rAF rounding and sub-frame jitter, not a missed refresh.
+  if (source === "frame_gaps") return gap > frame_ms * 1.25 ? 1 : -1;
+  if (source !== "fences") return 0;
+  if (fence_ms > page_ms) return 1;
+  return fence_ms < page_ms * STEP_UP_HEADROOM ? -1 : 0;
+}
+
 // `frame_share` and `shares` start at TEXT_FRAME_SHARE and EFFECT_SHARES.
 // `tune()` changes them while the page runs, and `report()` tells the state
 // of each effect of the last settle. A host can use both to show the budget
@@ -66,9 +107,22 @@ export function create_frame_budget({
   frame_share = TEXT_FRAME_SHARE,
   shares = EFFECT_SHARES,
 } = {}) {
-  const states = new WeakMap();
+  let states = new WeakMap();
   const tuning = { frame_share, shares: { ...shares } };
   let last = { items: [], frame_ms: 0 };
+  let measurement = { source: "frame_gaps", rejected: false, fences: false };
+  let fence_ms = null;
+  let fresh_fence = false;
+  let drew = false;
+  const spans = new Map();
+
+  function transition(event, capabilities) {
+    measurement = measurement_after(measurement, event, capabilities);
+    spans.clear();
+    fence_ms = null;
+    fresh_fence = false;
+    for (const item of last.items) state_of(item).direction = 0;
+  }
 
   const state_of = (item) => {
     let state = states.get(item);
@@ -80,8 +134,8 @@ export function create_frame_budget({
         measured: false,
         unit_ms: 0,
         pixels: 1,
-        over_since: null,
-        under_since: null,
+        direction: 0,
+        since: 0,
         next_draw: 0,
         drawn: false,
       };
@@ -92,6 +146,29 @@ export function create_frame_budget({
   const share_of = (item) => effect_share(item.names, tuning.shares);
 
   return {
+    get source() { return measurement.source; },
+
+    backend_opened(capabilities) {
+      states = new WeakMap();
+      last = { items: [], frame_ms: 0 };
+      drew = false;
+      transition("backend_opened", capabilities);
+    },
+
+    fence_failed() {
+      if (measurement.source === "fences") transition("fence_failed");
+    },
+
+    fence_sample(ms) {
+      if (measurement.source !== "fences") return;
+      fence_ms = ms;
+      fresh_fence = true;
+    },
+
+    timestamp_batch(batch) {
+      if (measurement.source !== "timestamps") return;
+      for (const [name, ms] of Object.entries(batch)) spans.set(name, ms);
+    },
     level_of: (item) => LEVELS[state_of(item).level],
 
     // Sets the part of each frame for all text effects (0 to 1), and the
@@ -105,14 +182,14 @@ export function create_frame_budget({
     },
 
     // The tuning in use, and each effect of the last settle: its names,
-    // level, measured GPU cost per frame at that level (null before a
-    // measurement), and its part of the frame. It reads the state now, so a
-    // GPU time that came back after the settle shows.
+    // level, checked per-pass cost (if available), and share of the frame.
     report() {
       const page_ms = last.frame_ms * tuning.frame_share;
       let total_share = 0;
       for (const item of last.items) total_share += share_of(item);
       return {
+        source: measurement.source,
+        fence_ms,
         frame_share: tuning.frame_share,
         shares: { ...tuning.shares },
         default_share: DEFAULT_SHARE,
@@ -128,7 +205,8 @@ export function create_frame_budget({
             share,
             budget_ms: total_share ? (page_ms * share) / total_share : 0,
             level: state.level,
-            cost_ms: state.measured ? average_ms(state, state.level) : null,
+            cost_ms: measurement.source === "timestamps" && state.measured
+              ? average_ms(state, state.level) : null,
           };
         }),
       };
@@ -149,6 +227,7 @@ export function create_frame_budget({
     drawn(item, frame_time, frame_ms, pixels, scale) {
       const state = state_of(item);
       state.pixels = pixels;
+      drew = true;
       state.drawn_scale = scale;
       state.drawn = true;
       const { rate } = LEVELS[state.level];
@@ -158,62 +237,53 @@ export function create_frame_budget({
         rate > 0 ? frame_time + frame_ms / rate - frame_ms / 2 : Infinity;
     },
 
-    // Records the GPU time of the last draw of `item`, in milliseconds.
-    gpu_time(item, ms) {
-      const state = states.get(item);
-      if (!state?.drawn_scale || !Number.isFinite(ms) || ms < 0) return;
-      const unit =
-        ms / Math.max(1, state.pixels * state.drawn_scale * state.drawn_scale);
-      state.unit_ms = state.measured
-        ? state.unit_ms + (unit - state.unit_ms) * SMOOTHING
-        : unit;
-      state.measured = true;
-    },
-
-    // Moves each visible effect between levels. `frame_ms` is the frame
-    // interval of the page.
-    settle(visible_items, frame_ms) {
+    // settle sees the gap *after* the preceding draws. All atlas batches
+    // from that frame have settled, including their vgpu query readbacks.
+    settle(visible_items, frame_ms, gap = null) {
+      if (measurement.source === "timestamps" && gap > 0) {
+        let sum = 0;
+        for (const ms of spans.values()) sum += ms;
+        if (sum > gap) {
+          transition("timestamps_exceed_gap");
+        } else {
+          for (const item of last.items) {
+            const ms = spans.get(item.handle?.span_name);
+            if (!Number.isFinite(ms) || ms < 0) continue;
+            const state = state_of(item);
+            const unit = ms / Math.max(1, state.pixels * state.drawn_scale ** 2);
+            state.unit_ms = state.measured
+              ? state.unit_ms + (unit - state.unit_ms) * SMOOTHING : unit;
+            state.measured = true;
+          }
+        }
+      }
+      spans.clear();
       const page_ms = frame_ms * tuning.frame_share;
+      const time = now();
+      last = { items: visible_items, frame_ms };
+      const { source } = measurement;
+      const waiting = source === "fences" && gap > 0 && drew && !fresh_fence;
+      const direction = aggregate_direction(source, gap, frame_ms, fresh_fence ? fence_ms : 0, page_ms);
+      drew = false;
+      fresh_fence = false;
+      if (waiting) return;
+      const selected = direction && costliest(visible_items, state_of, share_of, direction);
       let total_share = 0;
       for (const item of visible_items) total_share += share_of(item);
-      if (total_share <= 0) return;
-      const time = now();
-      last = { items: [...visible_items], frame_ms };
 
       for (const item of visible_items) {
         const state = state_of(item);
-        const budget_ms = (page_ms * share_of(item)) / total_share;
-        if (!state.measured) continue;
-
-        if (
-          state.level < LEVELS.length - 1 &&
-          average_ms(state, state.level) > budget_ms
-        ) {
-          state.under_since = null;
-          state.over_since ??= time;
-          if (time - state.over_since >= STEP_DOWN_MS) {
-            state.level += 1;
-            state.over_since = null;
-            // The new level draws at once, so its cost is measured.
-            state.drawn = false;
-          }
-          continue;
+        let demand = item === selected ? direction : 0;
+        if (source === "timestamps" && gap > 0 && state.measured) {
+          const part = page_ms * share_of(item) / total_share;
+          const over = state.level + 1 < LEVELS.length &&
+            average_ms(state, state.level) > part;
+          const under = state.level > 0 &&
+            average_ms(state, state.level - 1) < part * STEP_UP_HEADROOM;
+          demand = over ? 1 : under ? -1 : 0;
         }
-        state.over_since = null;
-
-        if (
-          state.level > 0 &&
-          average_ms(state, state.level - 1) < budget_ms * STEP_UP_HEADROOM
-        ) {
-          state.under_since ??= time;
-          if (time - state.under_since >= STEP_UP_MS) {
-            state.level -= 1;
-            state.under_since = null;
-            state.drawn = false;
-          }
-        } else {
-          state.under_since = null;
-        }
+        const next = adjusted(state, demand, time);
+        if (next !== state) states.set(item, next);
       }
     },
   };

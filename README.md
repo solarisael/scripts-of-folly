@@ -47,10 +47,15 @@ A host page can show its text effects after this event.
 The text effects share half of each frame on the GPU.
 Each effect gets a part of that time in proportion to its share.
 An effect over its part steps down: a lower render scale, then a lower frame rate, then a still.
-The cost comes from GPU timestamps, so it needs WebGPU with the `timestamp-query` feature.
-Without timestamps, every effect stays at full quality.
+The budget checks the sum of all GPU timestamps against the time between consecutive frames.
+If the sum exceeds that time, the budget ignores timestamps for the rest of the session.
+On WebGL2, a fence measures the time until the GPU finishes the submissions.
+The budget checks the fence between tasks without waiting in the draw loop.
+Without either measurement, the budget compares frame gaps with the target interval.
+Repeated misses lower the most expensive share. Three seconds at the target rate permit one step up.
 `install_gpu_effects()` returns `budget`.
-`budget.report()` gives the level, measured cost, and part of each visible effect.
+`budget.report()` shows the measurement source, the last fence time, and each visible effect's level and share.
+Only checked timestamps give a cost for an individual effect.
 `budget.tune({ frame_share, shares })` changes the numbers while the page runs.
 
 ## Checks for a change to the GPU text runtime
