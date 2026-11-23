@@ -1,0 +1,13 @@
+id: shader-dom-globals
+language: JavaScript
+severity: error
+message: Keep window and document out of shader source modules. The shader build has no DOM.
+files: [src/**/wgsl.js, src/**/*.wgsl.js, src/**/*_wgsl.js]
+rule:
+  any:
+    - pattern: document
+    - pattern: window
+    - pattern: globalThis.document
+    - pattern: globalThis?.document
+    - pattern: globalThis.window
+    - pattern: globalThis?.window

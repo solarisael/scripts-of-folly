@@ -1,0 +1,11 @@
+id: shader-dom-globals
+valid:
+  - 'export const WGSL = String.raw`fn size() -> f32 { return window.size; }`;'
+  - 'const size = params.window; // window.innerWidth'
+invalid:
+  - 'const ink = document.body.dataset.ink;'
+  - 'let width = window.innerWidth;'
+  - 'const theme = globalThis.document?.documentElement;'
+  - 'const root = globalThis?.document?.body;'
+  - 'const view = globalThis.window;'
+  - 'const width = globalThis?.window?.innerWidth;'

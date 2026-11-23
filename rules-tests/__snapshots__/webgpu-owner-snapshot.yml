@@ -1,0 +1,26 @@
+id: webgpu-owner
+snapshots:
+  await globalThis.navigator?.gpu?.requestAdapter?.();:
+    labels:
+    - source: globalThis.navigator?.gpu?.requestAdapter
+      style: primary
+      start: 6
+      end: 47
+  "await navigator.gpu.requestAdapter({ powerPreference: \"low-power\" });":
+    labels:
+    - source: navigator.gpu.requestAdapter
+      style: primary
+      start: 6
+      end: 34
+  const device = await adapter.requestDevice();:
+    labels:
+    - source: adapter.requestDevice
+      style: primary
+      start: 21
+      end: 42
+  const open = adapter?.requestDevice?.bind(adapter);:
+    labels:
+    - source: adapter?.requestDevice
+      style: primary
+      start: 13
+      end: 35

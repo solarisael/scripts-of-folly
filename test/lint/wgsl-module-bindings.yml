@@ -1,0 +1,18 @@
+id: wgsl-module-bindings
+valid:
+  - |
+    /* This block contains /* another block */ and @binding(2). */
+    // @group(0) var<uniform> example: f32;
+    fn lens(radius: f32) -> f32 { return radius * radius; }
+  - |
+    var<private> uniform_count: u32;
+    fn binding_index(group: u32) -> u32 { return group; }
+invalid:
+  - |
+    @ group(0) var image: texture_2d<f32>;
+  - |
+    /* A comment with // and /* nesting */ ends here. */ @binding(3) var image: texture_2d<f32>;
+  - |
+    var
+      < uniform >
+      settings: vec4f;

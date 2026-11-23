@@ -1,0 +1,38 @@
+id: shader-dom-globals
+snapshots:
+  const ink = document.body.dataset.ink;:
+    labels:
+    - source: document
+      style: primary
+      start: 12
+      end: 20
+  const root = globalThis?.document?.body;:
+    labels:
+    - source: globalThis?.document
+      style: primary
+      start: 13
+      end: 33
+  const theme = globalThis.document?.documentElement;:
+    labels:
+    - source: globalThis.document
+      style: primary
+      start: 14
+      end: 33
+  const view = globalThis.window;:
+    labels:
+    - source: globalThis.window
+      style: primary
+      start: 13
+      end: 30
+  const width = globalThis?.window?.innerWidth;:
+    labels:
+    - source: globalThis?.window
+      style: primary
+      start: 14
+      end: 32
+  let width = window.innerWidth;:
+    labels:
+    - source: window
+      style: primary
+      start: 12
+      end: 18

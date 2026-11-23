@@ -53,6 +53,8 @@ Without timestamps, every effect stays at full quality.
 `budget.report()` gives the level, measured cost, and part of each visible effect.
 `budget.tune({ frame_share, shares })` changes the numbers while the page runs.
 
+See [Lint checks](docs/lint.md) for the JavaScript rules, the WGSL check, and the rule tests.
+
 ## Checks for a change to the GPU text runtime
 
 Run `bun run test` for the unit tests.

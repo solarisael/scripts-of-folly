@@ -1,0 +1,33 @@
+id: webgl2-owner
+language: JavaScript
+severity: error
+message: Open a WebGL2 context through src/webgl2/context.js.
+files: [src/**/*.js]
+ignores: [src/webgl2/context.js]
+rule:
+  # Smart AST matching distinguishes quotes, optional chains, and argument lists.
+  any:
+    - pattern: $CANVAS.getContext("webgl2")
+    - pattern: $CANVAS.getContext("webgl2", $$$OPTIONS)
+    - pattern: $CANVAS.getContext('webgl2')
+    - pattern: $CANVAS.getContext('webgl2', $$$OPTIONS)
+    - pattern: $CANVAS.getContext(`webgl2`)
+    - pattern: $CANVAS.getContext(`webgl2`, $$$OPTIONS)
+    - pattern: $CANVAS?.getContext("webgl2")
+    - pattern: $CANVAS?.getContext("webgl2", $$$OPTIONS)
+    - pattern: $CANVAS?.getContext('webgl2')
+    - pattern: $CANVAS?.getContext('webgl2', $$$OPTIONS)
+    - pattern: $CANVAS?.getContext(`webgl2`)
+    - pattern: $CANVAS?.getContext(`webgl2`, $$$OPTIONS)
+    - pattern: $CANVAS.getContext?.("webgl2")
+    - pattern: $CANVAS.getContext?.("webgl2", $$$OPTIONS)
+    - pattern: $CANVAS.getContext?.('webgl2')
+    - pattern: $CANVAS.getContext?.('webgl2', $$$OPTIONS)
+    - pattern: $CANVAS.getContext?.(`webgl2`)
+    - pattern: $CANVAS.getContext?.(`webgl2`, $$$OPTIONS)
+    - pattern: $CANVAS?.getContext?.("webgl2")
+    - pattern: $CANVAS?.getContext?.("webgl2", $$$OPTIONS)
+    - pattern: $CANVAS?.getContext?.('webgl2')
+    - pattern: $CANVAS?.getContext?.('webgl2', $$$OPTIONS)
+    - pattern: $CANVAS?.getContext?.(`webgl2`)
+    - pattern: $CANVAS?.getContext?.(`webgl2`, $$$OPTIONS)

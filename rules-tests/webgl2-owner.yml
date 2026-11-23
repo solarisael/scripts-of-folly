@@ -1,0 +1,30 @@
+id: webgl2-owner
+valid:
+  - 'canvas.getContext("2d", { label: "webgl2" });'
+  - 'await open_gpu("webgl2"); // canvas.getContext("webgl2")'
+  - 'canvas.getContext(`webgl${version}`);'
+invalid:
+  - 'canvas.getContext("webgl2");'
+  - 'canvas.getContext("webgl2", options);'
+  - "canvas.getContext('webgl2');"
+  - "canvas.getContext('webgl2', { alpha: true });"
+  - 'canvas.getContext(`webgl2`);'
+  - 'canvas.getContext(`webgl2`, { alpha: true });'
+  - 'canvas?.getContext("webgl2");'
+  - 'canvas?.getContext("webgl2", options);'
+  - "canvas?.getContext('webgl2');"
+  - "canvas?.getContext('webgl2', options);"
+  - 'offscreen?.getContext(`webgl2`);'
+  - 'offscreen?.getContext(`webgl2`, options);'
+  - 'canvas.getContext?.("webgl2");'
+  - 'canvas.getContext?.("webgl2", options);'
+  - "canvas.getContext?.('webgl2');"
+  - "canvas.getContext?.('webgl2', options);"
+  - 'canvas.getContext?.(`webgl2`);'
+  - 'canvas.getContext?.(`webgl2`, options);'
+  - 'canvas?.getContext?.("webgl2");'
+  - 'canvas?.getContext?.("webgl2", options);'
+  - "canvas?.getContext?.('webgl2');"
+  - "canvas?.getContext?.('webgl2', options);"
+  - 'canvas?.getContext?.(`webgl2`);'
+  - 'canvas?.getContext?.(`webgl2`, options);'
