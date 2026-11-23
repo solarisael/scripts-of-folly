@@ -1,14 +1,23 @@
-// Pairs a WGSL source with its naga GLSL. vgpu takes the result as a
-// ShaderSource v1 and ignores `glsl`; the WebGL2 leg reads `glsl` and the
-// WGSL bindings. A raw WGSL string becomes `{ version: 1, wgsl }`.
-// It lives apart from ./index.js, so a WebGPU page does not load the leg.
-export const shader_module = (wgsl_module, { frag, vert } = {}) => {
+// Pairs a prepared vgpu shader with its naga GLSL. vgpu 0.6 takes only a
+// prepared ShaderSource v2 (a .wgsl import through the vgpu loader, or
+// prepareShader() output), deeply frozen, so shader_module() returns the
+// shader untouched and keeps the GLSL beside it; the WebGL2 leg reads it
+// through shader_glsl(). It lives apart from ./index.js, so a WebGPU page
+// does not load the leg.
+const glsl_of = new WeakMap();
+
+export const shader_module = (shader, { frag, vert } = {}) => {
+  if (shader?.version !== 2 || typeof shader.wgsl !== "string") {
+    throw new TypeError(
+      "shader_module needs a prepared vgpu shader (ShaderSource v2): a .wgsl import through the vgpu loader, or prepareShader() from @vgpu/wgsl/prepare.",
+    );
+  }
   if (typeof frag !== "string") {
     throw new TypeError("shader_module needs the generated GLSL fragment.");
   }
-  const module =
-    typeof wgsl_module === "string"
-      ? { version: 1, wgsl: wgsl_module }
-      : wgsl_module;
-  return { ...module, glsl: { frag, vert } };
+  glsl_of.set(shader, { frag, vert });
+  return shader;
 };
+
+// The GLSL that shader_module() paired with `shader`, or undefined.
+export const shader_glsl = (shader) => glsl_of.get(shader);

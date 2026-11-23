@@ -1,5 +1,5 @@
-// The vision banner shader. Both legs run it: vgpu reads the WGSL, and the
-// WebGL2 leg runs the naga GLSL from scripts/build_glsl.js.
+// The vision banner shader. Both legs run it: vgpu runs it prepared, and the
+// WebGL2 leg runs its naga GLSL; scripts/build_glsl.js generates both.
 export const BANNER_WGSL = /* wgsl */ `
 struct Params {
   canvas_size: vec2f,

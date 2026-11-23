@@ -9,6 +9,7 @@
         "vgpu": "^0.6.0",
       },
       "devDependencies": {
+        "@vgpu/wgsl": "0.6.0",
         "@vgpu/wgsl-std": "^0.6.0",
         "puppeteer-core": "25.16.0",
       },

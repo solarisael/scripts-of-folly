@@ -1,8 +1,8 @@
-import { SCENE_WGSL } from "./wgsl.js";
+import scene_shader from "./wgsl.generated.js";
 import { FRAG, VERT } from "./glsl.generated.js";
 import { shader_module } from "../webgl2/shader_module.js";
 
-const shader = shader_module(SCENE_WGSL, { frag: FRAG, vert: VERT });
+const shader = shader_module(scene_shader, { frag: FRAG, vert: VERT });
 
 export function composition_gpu(canvas, { api, gpu, kind }) {
   const owned = [];

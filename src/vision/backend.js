@@ -1,11 +1,12 @@
 // The vision banner backend. It runs on whichever gpu it gets: vgpu on
-// WebGPU, or the WebGL2 leg. Both legs run BANNER_WGSL; the WebGL2 leg reads
-// its naga GLSL from ./glsl.generated.js.
-import { BANNER_WGSL } from "./wgsl.js";
+// WebGPU, or the WebGL2 leg. Both legs run BANNER_WGSL: vgpu runs it prepared
+// from ./wgsl.generated.js, and the WebGL2 leg runs its naga GLSL from
+// ./glsl.generated.js.
+import banner_shader from "./wgsl.generated.js";
 import { FRAG, VERT } from "./glsl.generated.js";
 import { shader_module } from "../webgl2/shader_module.js";
 
-const BANNER_SHADER = shader_module(BANNER_WGSL, { frag: FRAG, vert: VERT });
+const BANNER_SHADER = shader_module(banner_shader, { frag: FRAG, vert: VERT });
 
 const canvas_format = (kind) =>
   kind === "webgpu"

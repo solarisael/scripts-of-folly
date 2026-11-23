@@ -1,11 +1,13 @@
 // The text-effect backend. It runs on whichever gpu it gets: vgpu on WebGPU,
-// or the WebGL2 leg in ../webgl2/. Both legs run the same WGSL; the WebGL2 leg
-// reads its naga GLSL from ./glsl.generated.js.
-import { WGSL_SOURCE, EFFECT_SLOTS, EFFECT_SLOT_COUNT } from "./wgsl.js";
+// or the WebGL2 leg in ../webgl2/. Both legs run the same WGSL: vgpu runs it
+// prepared from ./wgsl.generated.js, and the WebGL2 leg runs its naga GLSL
+// from ./glsl.generated.js.
+import { EFFECT_SLOTS, EFFECT_SLOT_COUNT } from "./effect_slots.js";
+import text_shader from "./wgsl.generated.js";
 import { FRAG, VERT } from "./glsl.generated.js";
 import { shader_module } from "../webgl2/shader_module.js";
 
-const SHADER = shader_module(WGSL_SOURCE, { frag: FRAG, vert: VERT });
+const SHADER = shader_module(text_shader, { frag: FRAG, vert: VERT });
 
 const EFFECT_COUNT = EFFECT_SLOT_COUNT;
 
@@ -275,10 +277,10 @@ export async function create_gpu_backend(
     return handle.span;
   };
 
-  // A draw reads the shader text when it is made. For this shader that takes
-  // about 20 ms on the main thread. An item needs its own draw only while it
-  // lives. So a disposed handle gives its draw back, and the next capture
-  // takes it.
+  // A draw costs main-thread work when it is made (vgpu 0.5 parsed this shader
+  // then, about 20 ms; the prepared shader of vgpu 0.6 spares the parse). An
+  // item needs its own draw only while it lives. So a disposed handle gives
+  // its draw back, and the next capture takes it.
   const MAX_IDLE_DRAWS = 32;
   const idle_draws = new Map();
   const make_draw = (kind) =>

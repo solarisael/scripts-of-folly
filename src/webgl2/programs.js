@@ -7,6 +7,7 @@
 
 import { GLSL_BINDING, block_layout, bind_block } from "./uniforms.js";
 import { bind_texture } from "./textures.js";
+import { shader_glsl } from "./shader_module.js";
 
 const FULLSCREEN_VERTEX = `#version 300 es
 precision highp float;
@@ -120,10 +121,10 @@ const compile_shader = (gl, stage, source, label) => {
   return shader;
 };
 
-const link_program = (gpu, source, label) => {
+const link_program = (gpu, source, glsl, label) => {
   const { gl } = gpu;
-  const vertex = source.glsl.vert ?? FULLSCREEN_VERTEX;
-  const key = `${vertex}\n${source.glsl.frag}`;
+  const vertex = glsl.vert ?? FULLSCREEN_VERTEX;
+  const key = `${vertex}\n${glsl.frag}`;
   const cached = gpu.programs.get(key);
   if (cached) return cached;
 
@@ -131,7 +132,7 @@ const link_program = (gpu, source, label) => {
   gl.attachShader(handle, compile_shader(gl, gl.VERTEX_SHADER, vertex, label));
   gl.attachShader(
     handle,
-    compile_shader(gl, gl.FRAGMENT_SHADER, source.glsl.frag, label),
+    compile_shader(gl, gl.FRAGMENT_SHADER, glsl.frag, label),
   );
   gl.linkProgram(handle);
   if (!gl.getProgramParameter(handle, gl.LINK_STATUS)) {
@@ -163,7 +164,12 @@ const apply_output = (gl, state) => {
 
 const use_program = (state) => {
   const { gl } = state.gpu;
-  state.program ??= link_program(state.gpu, state.source, state.label);
+  state.program ??= link_program(
+    state.gpu,
+    state.source,
+    state.glsl,
+    state.label,
+  );
   const program = state.program;
   gl.useProgram(program.handle);
   for (const block of program.blocks) bind_block(state, block);
@@ -213,14 +219,16 @@ const output_state = (gl, options, label) => {
 
 const create_drawable = (gpu, source, options, counts) => {
   const label = options.label ?? "effect";
-  if (typeof source?.glsl?.frag !== "string") {
+  const glsl = shader_glsl(source);
+  if (!glsl) {
     throw new Error(
-      `${label}: the WebGL2 leg needs shader_module(wgsl, { frag }) from scripts-of-folly/webgl2.`,
+      `${label}: the WebGL2 leg needs shader_module(shader, { frag }) from scripts-of-folly/webgl2.`,
     );
   }
   const state = {
     gpu,
     source,
+    glsl,
     label,
     bag: { ...options.set },
     dirty: true,
@@ -236,7 +244,7 @@ const create_drawable = (gpu, source, options, counts) => {
       return drawable;
     },
     compileSync() {
-      state.program ??= link_program(gpu, source, label);
+      state.program ??= link_program(gpu, source, glsl, label);
       return drawable;
     },
     async compile() {
@@ -262,7 +270,7 @@ export const draw = (gpu, options) => {
   if (refused.length) {
     throw new Error(`${label}: the WebGL2 leg does not mirror ${refused}.`);
   }
-  if (typeof options.shader?.glsl?.vert !== "string") {
+  if (typeof shader_glsl(options.shader)?.vert !== "string") {
     throw new Error(`${label}: a WebGL2 draw needs a generated .vert.`);
   }
   return create_drawable(gpu, options.shader, options, {

@@ -5,6 +5,7 @@
   "repository": "https://github.com/solarisael/scripts-of-folly",
   "scripts": {
     "build:terminal-shader": "bun scripts/build_terminal_shader.js",
+    "check:terminal-shader": "bun scripts/build_terminal_shader.js --check",
     "check:text-shader": "bun scripts/check_text_shader.js",
     "glsl:build": "bun scripts/build_glsl.js",
     "glsl:check": "bun scripts/build_glsl.js --check",
@@ -16,6 +17,7 @@
     "vgpu": "^0.6.0"
   },
   "devDependencies": {
+    "@vgpu/wgsl": "0.6.0",
     "@vgpu/wgsl-std": "^0.6.0",
     "puppeteer-core": "25.16.0"
   },

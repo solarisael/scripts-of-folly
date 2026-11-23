@@ -20,16 +20,21 @@ Reduced motion uses a settled frame.
 
 Each GPU effect has one shader, written in WGSL.
 On WebGPU, vgpu runs the WGSL.
+vgpu 0.6 takes only prepared shaders (ShaderSource v2).
+`prepareShader()` from `@vgpu/wgsl/prepare` prepares each shader at build time, so a page never loads the WGSL parser.
 Without WebGPU, the WebGL2 leg in `src/webgl2/` runs the same shader.
 Naga converts the WGSL to GLSL for this leg.
 
-After a change to a shader, run `bun run glsl:build` and commit the `glsl.generated.js` files.
+After a change to a shader, run `bun run glsl:build` and commit the `wgsl.generated.js` and `glsl.generated.js` files.
 This needs naga-cli 30.0.1 on PATH: `cargo install naga-cli --version 30.0.1`.
 `bun run glsl:check` fails when a generated file does not match its WGSL.
+After a change to `src/terminal/terminal.wgsl`, run `bun run build:terminal-shader`; `bun run check:terminal-shader` fails when `terminal_shader.js` does not match.
+Both terminal scripts validate the shader on a WebGPU device.
 
 The WebGL2 leg mirrors the part of the vgpu API that Folly and its host pages use.
 Import it from `scripts-of-folly/webgl2`.
-Pair each WGSL source with its GLSL through `shader_module()`.
+Pair each prepared shader (a `.wgsl` import through the vgpu loader) with its GLSL through `shader_module()`.
+It returns the shader itself and keeps the GLSL for the WebGL2 leg.
 A host page can pass `open_gpu(kind)` to `install_gpu_effects()`.
 Then the text effects open their GPU through the page's own backend selection.
 
